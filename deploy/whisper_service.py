@@ -1,10 +1,12 @@
 import os
 import tempfile
 import logging
+import torch
 from pathlib import Path
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
-from faster_whisper import WhisperModel
+from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
+import librosa
 import uvicorn
 
 # Setup logging
@@ -14,9 +16,10 @@ logger = logging.getLogger(__name__)
 # Initialize FastAPI app
 app = FastAPI(title="Whisper Transcription Service", version="1.0.0")
 
-# Global model variable
+# Global model variables
 model = None
-MODEL_NAME = os.environ.get('MODEL_NAME', 'openai/whisper-large-v3')
+processor = None
+MODEL_NAME = os.environ.get('MODEL_NAME', 'ivrit-ai/whisper-large-v3')
 
 @app.on_event("startup")
 async def load_model():
