@@ -50,4 +50,6 @@ exec vllm serve /workspace/weights/DotsOCR \\\n\
 
 RUN chmod +x /workspace/start_dots_ocr.sh
 
+# Override the vLLM entrypoint
+ENTRYPOINT []
 CMD ["/workspace/start_dots_ocr.sh"]
