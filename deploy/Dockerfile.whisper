@@ -16,16 +16,12 @@ RUN apt-get update && apt-get install -y \
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
-# Expose port
-EXPOSE 8004
-
 # Pre-download model during build (for offline deployment)
 ARG WHISPER_MODEL="ivrit-ai/whisper-large-v3-turbo"
 ENV MODEL_NAME=${WHISPER_MODEL}
 
-# Combined optimization: Install dependencies, download model, create service, and cleanup in single layer
+# Install Python dependencies and pre-download model in single layer
 RUN set -e && \
-    # Install Python dependencies \
     pip install --no-cache-dir --upgrade pip && \
     pip install --no-cache-dir \
         fastapi==0.104.1 \
@@ -33,7 +29,6 @@ RUN set -e && \
         faster-whisper==1.0.1 \
         python-multipart==0.0.6 \
         numpy==1.24.3 && \
-    # Pre-download model using faster-whisper \
     python3 -c "\
 import os; \
 from faster_whisper import WhisperModel; \
@@ -41,149 +36,20 @@ model_name = os.environ.get('MODEL_NAME', 'ivrit-ai/whisper-large-v3-turbo'); \
 print(f'Pre-downloading Whisper model: {model_name}'); \
 model = WhisperModel(model_name, device='cpu', compute_type='int8'); \
 print(f'Whisper model {model_name} downloaded successfully')" && \
-    # Create FastAPI service script \
-    cat > /app/whisper_service.py << 'EOF'
-import os
-import tempfile
-import logging
-from pathlib import Path
-from fastapi import FastAPI, File, UploadFile, HTTPException
-from fastapi.responses import JSONResponse
-from faster_whisper import WhisperModel
-import uvicorn
-
-# Setup logging
-logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger(__name__)
-
-# Initialize FastAPI app
-app = FastAPI(title="Whisper Transcription Service", version="1.0.0")
-
-# Global model variable
-model = None
-MODEL_NAME = os.environ.get('MODEL_NAME', 'ivrit-ai/whisper-large-v3-turbo')
-
-@app.on_event("startup")
-async def load_model():
-    global model
-    logger.info(f"Loading Whisper model: {MODEL_NAME}")
-    try:
-        # Use CPU with int8 for efficiency, can be changed to GPU if available
-        device = "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES", "") != "" else "cpu"
-        compute_type = "int8" if device == "cpu" else "float16"
-        
-        model = WhisperModel(MODEL_NAME, device=device, compute_type=compute_type)
-        logger.info(f"Whisper model loaded successfully on {device}")
-    except Exception as e:
-        logger.error(f"Failed to load model: {e}")
-        raise e
-
-@app.get("/health")
-async def health_check():
-    return {
-        "status": "healthy" if model is not None else "unhealthy",
-        "service": "whisper-transcription",
-        "model": MODEL_NAME,
-        "version": "1.0.0"
-    }
-
-@app.post("/transcribe")
-async def transcribe_audio(file: UploadFile = File(...)):
-    if model is None:
-        raise HTTPException(status_code=503, detail="Model not loaded")
-    
-    # Validate file type
-    allowed_types = [
-        "audio/wav", "audio/mpeg", "audio/mp3", "audio/ogg",
-        "audio/flac", "audio/aac", "audio/webm", "audio/m4a"
-    ]
-    
-    if file.content_type not in allowed_types:
-        raise HTTPException(
-            status_code=400, 
-            detail=f"Unsupported file type: {file.content_type}"
-        )
-    
-    # Check file size (max 100MB)
-    if file.size and file.size > 100 * 1024 * 1024:
-        raise HTTPException(status_code=400, detail="File too large. Max size is 100MB")
-    
-    try:
-        logger.info(f"Transcribing audio file: {file.filename}")
-        
-        # Save uploaded file to temporary location
-        with tempfile.NamedTemporaryFile(delete=False, suffix=Path(file.filename).suffix) as tmp_file:
-            content = await file.read()
-            tmp_file.write(content)
-            tmp_file_path = tmp_file.name
-        
-        try:
-            # Transcribe audio with Hebrew language explicitly set
-            segments, info = model.transcribe(
-                tmp_file_path, 
-                language="he",  # Explicitly set to Hebrew for ivrit-ai model
-                beam_size=5,
-                word_timestamps=False
-            )
-            
-            # Extract text from segments
-            transcribed_text = ""
-            segment_list = []
-            
-            for segment in segments:
-                transcribed_text += segment.text + " "
-                segment_list.append({
-                    "start": segment.start,
-                    "end": segment.end,
-                    "text": segment.text.strip()
-                })
-            
-            result = {
-                "success": True,
-                "text": transcribed_text.strip(),
-                "language": info.language,
-                "language_probability": info.language_probability,
-                "duration": info.duration,
-                "segments": segment_list
-            }
-            
-            logger.info(f"Transcription completed. Duration: {info.duration:.2f}s, Language: {info.language}")
-            return JSONResponse(content=result)
-            
-        finally:
-            # Clean up temporary file
-            os.unlink(tmp_file_path)
-            
-    except Exception as e:
-        logger.error(f"Transcription failed: {e}")
-        raise HTTPException(status_code=500, detail=f"Transcription failed: {str(e)}")
-
-if __name__ == "__main__":
-    uvicorn.run(app, host="0.0.0.0", port=8004)
-EOF
-    # Create startup script \
-    cat > /app/start_whisper.sh << 'EOF'
-#!/bin/bash
-set -e
-
-MODEL=${MODEL_NAME:-"ivrit-ai/whisper-large-v3-turbo"}
-echo "Starting Whisper transcription service with model: $MODEL"
-echo "Model is pre-downloaded for offline deployment"
-echo "Service available on port 8004"
-echo ""
-
-# Start the FastAPI service
-python /app/whisper_service.py
-EOF
-    chmod +x /app/start_whisper.sh && \
-    # Cleanup to reduce image size \
     pip cache purge && \
     rm -rf /tmp/* && \
     rm -rf /var/cache/* && \
     rm -rf /root/.cache/pip && \
     apt-get autoremove -y && \
-    apt-get autoclean && \
-    rm -rf /var/lib/apt/lists/*
+    apt-get autoclean
+
+# Copy service files
+COPY deploy/whisper_service.py /app/
+COPY deploy/start_whisper.sh /app/
+RUN chmod +x /app/start_whisper.sh
+
+# Expose port
+EXPOSE 8004
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
