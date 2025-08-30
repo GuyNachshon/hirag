@@ -34,9 +34,14 @@ fi
 
 print_status "Docker is running. Starting build process..."
 
-# Set build context to parent directory
-BUILD_CONTEXT=".."
-cd "$(dirname "$0")"
+# Get the script directory and parent directory
+SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
+PARENT_DIR="$(dirname "$SCRIPT_DIR")"
+
+# Change to parent directory for correct build context
+cd "$PARENT_DIR"
+
+print_status "Working directory: $(pwd)"
 
 # Build order: dependencies first, then services that depend on them
 BUILD_SERVICES=(
@@ -57,7 +62,7 @@ for service_info in "${BUILD_SERVICES[@]}"; do
     print_status "  Image name: $image_name:latest"
     
     # Build with no cache to ensure fresh downloads
-    if docker build --no-cache -f "$dockerfile" -t "$image_name:latest" "$BUILD_CONTEXT"; then
+    if docker build --no-cache -f "$dockerfile" -t "$image_name:latest" .; then
         print_status "✓ Successfully built $service_name"
     else
         print_error "✗ Failed to build $service_name"
