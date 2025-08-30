@@ -16,7 +16,7 @@ docker run -d \
 
 echo "Small LLM server starting on port 8001..."
 echo "Container name: rag-llm-server"
-echo "Model: Qwen/Qwen2-0.5B-Instruct"
+echo "Model: Qwen/Qwen3-4B-Thinking-2507"
 echo ""
 echo "Check logs with: docker logs -f rag-llm-server"
 echo "Test health with: curl http://localhost:8001/health"
