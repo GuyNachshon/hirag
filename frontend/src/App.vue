@@ -16,12 +16,12 @@ const toggleSidebar = () => {
 
 const navItems = [
   {
-    name: 'מסמכים',
-    route: '/documents'
-  },
-  {
     name: 'צ׳אט',
     route: '/'
+  },
+  {
+    name: 'חיפוש',
+    route: '/search'
   },
   {
     name: 'תמלולים',
@@ -29,7 +29,7 @@ const navItems = [
   },
 ]
 
-const activeNavItem = ref(navItems[1])
+const activeNavItem = ref(navItems[0])
 
 // Watch for route changes to update active nav item
 watch(() => router.currentRoute.value.path, (newPath) => {

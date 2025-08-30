@@ -49,6 +49,7 @@ REQUIRED_IMAGES=(
     "rag-dots-ocr:latest"
     "rag-embedding-server:latest"
     "rag-api:latest"
+    "rag-frontend:latest"
 )
 
 # Check for either small or gptoss model
@@ -100,7 +101,7 @@ fi
 
 # Stop any existing containers
 print_header "5. Cleaning up existing containers..."
-CONTAINERS=("rag-dots-ocr" "rag-embedding-server" "rag-llm-server" "rag-api")
+CONTAINERS=("rag-dots-ocr" "rag-embedding-server" "rag-llm-server" "rag-api" "rag-frontend")
 
 for container in "${CONTAINERS[@]}"; do
     if docker ps -a | grep -q "$container"; then
@@ -164,15 +165,27 @@ docker run -d \
 
 print_status "✓ API server started"
 
+# Start Frontend server
+print_status "Starting Frontend service..."
+docker run -d \
+    --name rag-frontend \
+    --network "$NETWORK_NAME" \
+    -p 3000:3000 \
+    -e VITE_API_URL="" \
+    rag-frontend:latest
+
+print_status "✓ Frontend server started"
+
 print_header "7. Deployment Summary"
 print_status "=========================================="
 print_status "RAG System Successfully Deployed!"
 print_status "=========================================="
 print_status "Services running:"
-print_status "  • DotsOCR:    http://localhost:8002"
-print_status "  • Embedding:  http://localhost:8001"
-print_status "  • LLM:        http://localhost:8003"
+print_status "  • Frontend:   http://localhost:3000 (Main UI)"
 print_status "  • API:        http://localhost:8080"
+print_status "  • LLM:        http://localhost:8003"
+print_status "  • Embedding:  http://localhost:8001"
+print_status "  • DotsOCR:    http://localhost:8002"
 print_status ""
 print_status "Data directories:"
 print_status "  • Input:      $(pwd)/data/input"
@@ -181,8 +194,9 @@ print_status "  • Logs:       $(pwd)/data/logs"
 print_status "  • Cache:      $(pwd)/data/cache"
 print_status ""
 print_status "Next steps:"
-print_status "1. Add documents to: $(pwd)/data/input/"
-print_status "2. Test API: curl http://localhost:8080/health"
-print_status "3. Monitor logs: docker logs -f rag-api"
+print_status "1. Open the UI: http://localhost:3000"
+print_status "2. Add documents to: $(pwd)/data/input/"
+print_status "3. Test API: curl http://localhost:8080/health"
+print_status "4. Monitor logs: docker logs -f rag-api"
 print_status ""
 print_status "Use './validate_offline_deployment.sh' to verify all services"

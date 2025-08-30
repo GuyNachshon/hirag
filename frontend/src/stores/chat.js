@@ -9,6 +9,11 @@ export const useChatStore = defineStore('chat', () => {
   const error = ref(null)
   const documentStats = ref({ total_documents: 0, vector_size: 0 })
   const uploadStatus = ref(null)
+  
+  // Session management
+  const currentSessionId = ref(null)
+  const sessions = ref([])
+  const userId = ref('user_' + Math.random().toString(36).substr(2, 9))
 
 
 
@@ -23,13 +28,76 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
+  // Session management functions
+  async function createNewSession(title = 'New Chat') {
+    try {
+      error.value = null
+      const response = await api.createChatSession(userId.value, title)
+      
+      if (response.success !== false && response.session_id) {
+        currentSessionId.value = response.session_id
+        messages.value = []
+        hasMessageBeenSent.value = false
+        await loadSessions()
+        return response.session_id
+      } else {
+        throw new Error(response.error || 'Failed to create session')
+      }
+    } catch (err) {
+      error.value = 'Failed to create new session'
+      console.error('Create session error:', err)
+      throw err
+    }
+  }
+
+  async function loadSessions() {
+    try {
+      const response = await api.getChatSessions(userId.value)
+      if (response.success !== false && response.sessions) {
+        sessions.value = response.sessions
+      }
+      return response
+    } catch (err) {
+      console.warn('Failed to load sessions:', err)
+      return { success: false, error: err.message }
+    }
+  }
+
+  async function loadSessionHistory(sessionId) {
+    try {
+      error.value = null
+      const response = await api.getChatHistory(sessionId)
+      
+      if (response.success !== false && response.messages) {
+        messages.value = response.messages.map(msg => ({
+          id: msg.id || Date.now(),
+          content: msg.content,
+          sender: msg.role === 'user' ? 'user' : 'assistant',
+          timestamp: new Date(msg.timestamp)
+        }))
+        currentSessionId.value = sessionId
+        hasMessageBeenSent.value = messages.value.length > 0
+        return response
+      } else {
+        throw new Error(response.error || 'Failed to load session history')
+      }
+    } catch (err) {
+      error.value = 'Failed to load session history'
+      console.error('Load session history error:', err)
+      throw err
+    }
+  }
+
   // Load document statistics
   async function loadDocumentStats() {
     try {
       error.value = null
       const stats = await api.getDocuments()
-      if (stats.success) {
-        documentStats.value = { total_documents: stats.documents?.length || 0, vector_size: 0 }
+      if (stats.success !== false) {
+        documentStats.value = { 
+          total_documents: stats.results?.length || 0, 
+          vector_size: 0 
+        }
       }
       return stats
     } catch (err) {
@@ -95,79 +163,89 @@ export const useChatStore = defineStore('chat', () => {
     }
   }
 
-  // Query documents (send message)
-  async function sendMessage(messageContent, useStreaming = true) {
+  // Send message with session management and RAG support
+  async function sendMessage(messageContent, useRag = true, files = []) {
     try {
       error.value = null
       hasMessageBeenSent.value = true
+      
+      // Ensure we have a session
+      if (!currentSessionId.value) {
+        await createNewSession()
+      }
       
       // Add user message immediately
       const userMessage = {
         id: Date.now(),
         content: messageContent,
         sender: 'user',
-        timestamp: new Date()
+        timestamp: new Date(),
+        files: files
       }
       messages.value.push(userMessage)
       
       // Start loading
       isLoading.value = true
       
-      // Create AI message placeholder for streaming
+      // Create AI message placeholder
       const aiMessageId = Date.now() + 1
       const aiMessage = {
         id: aiMessageId,
         content: '',
         sender: 'assistant',
         timestamp: new Date(),
-        isStreaming: useStreaming
+        isStreaming: false
       }
       messages.value.push(aiMessage)
       
       try {
-        if (useStreaming) {
-          // Try streaming query
-          await api.chatStream(
-            messageContent,
-            [], // history
-            // onChunk callback
-            (chunk) => {
-              const messageIndex = messages.value.findIndex(msg => msg.id === aiMessageId)
-              if (messageIndex !== -1) {
-                const piece = typeof chunk === 'string' ? chunk : (chunk && chunk.content) ? chunk.content : ''
-                if (piece) {
-                  messages.value[messageIndex].content += piece
-                }
-              }
-            }
-          )
-          
-          // Complete the response
+        // Send message via API
+        const result = await api.sendChatMessage(
+          currentSessionId.value,
+          messageContent,
+          useRag,
+          files
+        )
+        
+        if (result.success !== false) {
           const messageIndex = messages.value.findIndex(msg => msg.id === aiMessageId)
           if (messageIndex !== -1) {
-            messages.value[messageIndex].isStreaming = false
+            messages.value[messageIndex].content = result.content || result.response || 'Response received'
             messages.value[messageIndex].timestamp = new Date()
           }
-          isLoading.value = false
-        } else {
-          // Non-streaming query
-          const result = await api.chat(messageContent)
           
-          if (result.success) {
+          // Update session list if needed
+          await loadSessions()
+          
+        } else {
+          throw new Error(result.error || 'Failed to send message')
+        }
+        
+        isLoading.value = false
+        
+      } catch (apiError) {
+        console.error('API message failed:', apiError)
+        
+        // Fallback to legacy API for backwards compatibility
+        try {
+          console.warn('Falling back to legacy chat API')
+          const fallbackResult = await api.chat(messageContent)
+          
+          if (fallbackResult.success !== false) {
             const messageIndex = messages.value.findIndex(msg => msg.id === aiMessageId)
             if (messageIndex !== -1) {
-              messages.value[messageIndex].content = result.response || result.content
-              messages.value[messageIndex].isStreaming = false
+              messages.value[messageIndex].content = fallbackResult.content || fallbackResult.response || 'Fallback response received'
               messages.value[messageIndex].timestamp = new Date()
             }
           } else {
-            throw new Error(result.error)
+            throw new Error(fallbackResult.error || 'Fallback API also failed')
           }
-          isLoading.value = false
+        } catch (fallbackError) {
+          console.error('Fallback API also failed:', fallbackError)
+          throw apiError // throw the original error
         }
-      } catch (apiError) {
-        console.error('API query failed:', apiError)
-        throw apiError
+        
+        isLoading.value = false
       }
       
     } catch (err) {
@@ -235,9 +313,15 @@ export const useChatStore = defineStore('chat', () => {
     error,
     documentStats,
     uploadStatus,
+    currentSessionId,
+    sessions,
+    userId,
     
     // Actions
     checkHealth,
+    createNewSession,
+    loadSessions,
+    loadSessionHistory,
     loadDocumentStats,
     uploadDocuments,
     clearDocuments,

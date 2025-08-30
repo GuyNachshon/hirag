@@ -16,7 +16,7 @@ export const api = {
   // Health check
   async health() {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/health`);
+      const response = await fetch(`${API_BASE_URL}/health`);
       return response.json();
     } catch (error) {
       console.error('Health check failed:', error);
@@ -24,109 +24,112 @@ export const api = {
     }
   },
 
-  // Chat endpoints
-  async chat(message, history = []) {
+  // File search endpoint
+  async searchFiles(query, maxResults = 10) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/chat`, {
+      const response = await fetch(`${API_BASE_URL}/api/search`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message,
-          history,
+          query,
+          max_results: maxResults,
         }),
       });
       return response.json();
     } catch (error) {
-      console.error('Chat request failed:', error);
+      console.error('File search failed:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // Streaming chat
-  async chatStream(message, history = [], onChunk) {
+  // Chat session management
+  async createChatSession(userId, title = 'New Chat') {
     try {
-      const controller = new AbortController();
-      const response = await fetch(`${API_BASE_URL}/api/v1/chat/stream`, {
+      const response = await fetch(`${API_BASE_URL}/api/chat/sessions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
         body: JSON.stringify({
-          message,
-          history,
+          user_id: userId,
+          title,
         }),
-        signal: controller.signal,
       });
-
-      if (!response.ok) {
-        throw new Error(`HTTP error! status: ${response.status}`);
-      }
-      if (!response.body) {
-        throw new Error('ReadableStream not supported by this browser');
-      }
-
-      const reader = response.body.getReader();
-      const decoder = new TextDecoder();
-      let buffer = '';
-      const idleMs = 30000; // 30s idle timeout for stalled streams
-      let idleTimer = setTimeout(() => controller.abort('Stream timeout: no data received'), idleMs);
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        // Reset idle timer on any data
-        clearTimeout(idleTimer);
-        idleTimer = setTimeout(() => controller.abort('Stream timeout: no data received'), idleMs);
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split('\n');
-        buffer = lines.pop() || '';
-
-        for (let raw of lines) {
-          const line = raw.trim();
-          if (!line) continue;
-          if (line.startsWith('data:')) {
-            const data = line.replace(/^data:\s*/, '');
-            if (data === '[DONE]') return;
-            try {
-              const parsed = JSON.parse(data);
-              onChunk(parsed);
-            } catch (e) {
-              // If not valid JSON, ignore the line
-              // console.debug('Skipping non-JSON SSE data line:', data)
-            }
-          }
-        }
-      }
-
-      // Flush any remaining buffered line
-      if (buffer.trim().startsWith('data:')) {
-        const data = buffer.trim().replace(/^data:\s*/, '');
-        if (data !== '[DONE]') {
-          try {
-            const parsed = JSON.parse(data);
-            onChunk(parsed);
-          } catch (_) {}
-        }
-      }
-
-      clearTimeout(idleTimer);
+      return response.json();
     } catch (error) {
-      console.error('Streaming chat failed:', error);
-      throw error;
+      console.error('Create chat session failed:', error);
+      return { success: false, error: error.message };
     }
   },
 
-  // File upload
+  async getChatSessions(userId) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chat/sessions?user_id=${userId}`);
+      return response.json();
+    } catch (error) {
+      console.error('Get chat sessions failed:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  async getChatHistory(sessionId) {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/chat/sessions/${sessionId}/messages`);
+      return response.json();
+    } catch (error) {
+      console.error('Get chat history failed:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Chat message endpoint
+  async sendChatMessage(sessionId, content, useRag = true, files = []) {
+    try {
+      const formData = new FormData();
+      formData.append('content', content);
+      formData.append('use_rag', useRag);
+      
+      // Add files if any
+      files.forEach(file => {
+        formData.append('files', file);
+      });
+
+      const response = await fetch(`${API_BASE_URL}/api/chat/sessions/${sessionId}/messages`, {
+        method: 'POST',
+        body: formData,
+      });
+      return response.json();
+    } catch (error) {
+      console.error('Send chat message failed:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // Legacy chat endpoint for backwards compatibility
+  async chat(message, history = []) {
+    console.warn('Using legacy chat endpoint, consider using sendChatMessage instead');
+    try {
+      // For backwards compatibility, we'll create a temporary session
+      const sessionResponse = await this.createChatSession('legacy_user', 'Legacy Chat');
+      if (sessionResponse.success) {
+        return await this.sendChatMessage(sessionResponse.session_id, message, true, []);
+      }
+      return { success: false, error: 'Failed to create session' };
+    } catch (error) {
+      console.error('Legacy chat request failed:', error);
+      return { success: false, error: error.message };
+    }
+  },
+
+  // File upload - keeping for compatibility
   async uploadFile(file) {
     try {
       const formData = new FormData();
-      formData.append('file', file);
+      formData.append('files', file);
 
-      const response = await fetch(`${API_BASE_URL}/api/v1/upload`, {
+      const response = await fetch(`${API_BASE_URL}/api/upload`, {
         method: 'POST',
         body: formData,
       });
@@ -137,41 +140,34 @@ export const api = {
     }
   },
 
-  // Transcription
+  // Audio transcription - placeholder for future whisper integration
   async transcribeAudio(file) {
     try {
-      const formData = new FormData();
-      formData.append('file', file);
-
-      const response = await fetch(`${API_BASE_URL}/api/v1/transcribe`, {
-        method: 'POST',
-        body: formData,
-      });
-      return response.json();
+      // TODO: Implement whisper transcription endpoint when ready
+      console.warn('Audio transcription not yet implemented in new API');
+      return { success: false, error: 'Transcription endpoint not available' };
     } catch (error) {
       console.error('Transcription failed:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // Get documents
+  // Document management - using file search for now
   async getDocuments() {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/documents`);
-      return response.json();
+      // Use search with empty query to get all documents
+      return await this.searchFiles('', 100);
     } catch (error) {
       console.error('Get documents failed:', error);
       return { success: false, error: error.message };
     }
   },
 
-  // Delete document
+  // Delete document - placeholder
   async deleteDocument(docId) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/v1/documents/${docId}`, {
-        method: 'DELETE',
-      });
-      return response.json();
+      console.warn('Document deletion not yet implemented in new API');
+      return { success: false, error: 'Delete endpoint not available' };
     } catch (error) {
       console.error('Delete document failed:', error);
       return { success: false, error: error.message };

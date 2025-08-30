@@ -47,6 +47,7 @@ TAR_FILES=(
     "rag-llm-small_latest.tar"
     "rag-llm-gptoss_latest.tar"
     "rag-api_latest.tar"
+    "rag-frontend_latest.tar"
 )
 
 print_status "Found export files:"

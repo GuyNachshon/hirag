@@ -28,6 +28,7 @@ IMAGES=(
     "rag-llm-small:latest"
     "rag-llm-gptoss:latest"
     "rag-api:latest"
+    "rag-frontend:latest"
 )
 
 # Export each image

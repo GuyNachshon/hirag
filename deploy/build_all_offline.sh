@@ -45,6 +45,7 @@ BUILD_SERVICES=(
     "llm-small:deploy/Dockerfile.llm-small:rag-llm-small"
     "llm-gptoss:deploy/Dockerfile.llm:rag-llm-gptoss"
     "api:Dockerfile:rag-api"
+    "frontend:deploy/Dockerfile.frontend:rag-frontend"
 )
 
 # Build each service
