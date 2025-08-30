@@ -23,14 +23,24 @@ MODEL_NAME = os.environ.get('MODEL_NAME', 'ivrit-ai/whisper-large-v3')
 
 @app.on_event("startup")
 async def load_model():
-    global model
+    global model, processor
     logger.info(f"Loading Whisper model: {MODEL_NAME}")
     try:
-        # Use CPU with int8 for efficiency, can be changed to GPU if available
-        device = "cuda" if os.environ.get("CUDA_VISIBLE_DEVICES", "") != "" else "cpu"
-        compute_type = "int8" if device == "cpu" else "float16"
+        # Determine device
+        device = "cuda" if torch.cuda.is_available() and os.environ.get("CUDA_VISIBLE_DEVICES", "") != "" else "cpu"
         
-        model = WhisperModel(MODEL_NAME, device=device, compute_type=compute_type)
+        # Load processor and model
+        logger.info(f"Loading processor from {MODEL_NAME}")
+        processor = AutoProcessor.from_pretrained(MODEL_NAME)
+        
+        logger.info(f"Loading model from {MODEL_NAME} on {device}")
+        model = AutoModelForSpeechSeq2Seq.from_pretrained(
+            MODEL_NAME,
+            torch_dtype=torch.float16 if device == "cuda" else torch.float32,
+            low_cpu_mem_usage=True,
+            use_safetensors=True
+        ).to(device)
+        
         logger.info(f"Whisper model loaded successfully on {device}")
     except Exception as e:
         logger.error(f"Failed to load model: {e}")
