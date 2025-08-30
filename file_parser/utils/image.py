@@ -4,7 +4,7 @@ from PIL import Image
 from typing import Tuple
 import os
 from file_parser.utils.consts import IMAGE_FACTOR, MIN_PIXELS, MAX_PIXELS
-from file_parser.utils import fitz_doc_to_image
+from file_parser.utils.doc import fitz_doc_to_image
 from io import BytesIO
 import fitz
 import requests
