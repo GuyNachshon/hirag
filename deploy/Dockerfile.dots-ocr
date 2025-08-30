@@ -1,15 +1,20 @@
-# DotsOCR Vision Server Dockerfile - Based on official repo
+# DotsOCR Vision Server Dockerfile - Optimized
 FROM vllm/vllm-openai:v0.9.1
-
-# Install required dependencies as per their Dockerfile
-RUN pip3 install flash_attn==2.8.0.post2
-RUN pip3 install transformers==4.51.3
 
 # Set working directory to match their setup
 WORKDIR /workspace
 
-# Download model weights using their exact approach
-RUN python3 -c "\
+# Set environment variables matching their setup
+ENV PYTHONPATH="/workspace/weights:$PYTHONPATH"
+ENV CUDA_VISIBLE_DEVICES=0
+
+# Combined optimization: Install dependencies, download model, create script, and cleanup in single layer
+RUN set -e && \
+    # Install required dependencies \
+    pip3 install --no-cache-dir flash_attn==2.8.0.post2 && \
+    pip3 install --no-cache-dir transformers==4.51.3 && \
+    # Download model weights using their exact approach \
+    python3 -c "\
 from huggingface_hub import snapshot_download; \
 import os; \
 model_dir = './weights/DotsOCR'; \
@@ -21,19 +26,24 @@ snapshot_download(\
     resume_download=True\
 ); \
 print(f'Model downloaded to {model_dir}')\
-"
-
-# Set environment variables matching their setup
-ENV PYTHONPATH="/workspace/weights:$PYTHONPATH"
-ENV CUDA_VISIBLE_DEVICES=0
+" && \
+    # Create startup script with proper newlines using printf \
+    printf '#!/bin/bash\nset -ex\necho "--- Starting DotsOCR server ---"\necho "Modifying vllm entrypoint..."\nsed -i "/^from vllm\\.entrypoints\\.cli\\.main import main/a from DotsOCR import modeling_dots_ocr_vllm" $(which vllm)\necho "vllm script patched successfully"\ngrep -A 1 "from vllm.entrypoints.cli.main import main" $(which vllm)\necho "Starting server..."\nexec vllm serve /workspace/weights/DotsOCR \\\\\n    --tensor-parallel-size 1 \\\\\n    --gpu-memory-utilization 0.95 \\\\\n    --chat-template-content-format string \\\\\n    --served-model-name model \\\\\n    --trust-remote-code \\\\\n    --host 0.0.0.0 \\\\\n    --port 8000\n' > /workspace/start_dots_ocr.sh && \
+    chmod +x /workspace/start_dots_ocr.sh && \
+    # Cleanup to reduce image size \
+    pip3 cache purge && \
+    rm -rf /tmp/* && \
+    rm -rf /var/cache/* && \
+    rm -rf /root/.cache/pip && \
+    # Keep HuggingFace cache but remove unnecessary files \
+    find /root/.cache/huggingface -name "*.tmp*" -delete 2>/dev/null || true && \
+    # Remove build artifacts and unnecessary packages \
+    apt-get autoremove -y && \
+    apt-get autoclean && \
+    rm -rf /var/lib/apt/lists/*
 
 # Expose port
 EXPOSE 8000
-
-# Create startup script with proper newlines using printf
-RUN printf '#!/bin/bash\nset -ex\necho "--- Starting DotsOCR server ---"\necho "Modifying vllm entrypoint..."\nsed -i "/^from vllm\\.entrypoints\\.cli\\.main import main/a from DotsOCR import modeling_dots_ocr_vllm" $(which vllm)\necho "vllm script patched successfully"\ngrep -A 1 "from vllm.entrypoints.cli.main import main" $(which vllm)\necho "Starting server..."\nexec vllm serve /workspace/weights/DotsOCR \\\\\n    --tensor-parallel-size 1 \\\\\n    --gpu-memory-utilization 0.95 \\\\\n    --chat-template-content-format string \\\\\n    --served-model-name model \\\\\n    --trust-remote-code \\\\\n    --host 0.0.0.0 \\\\\n    --port 8000\n' > /workspace/start_dots_ocr.sh
-
-RUN chmod +x /workspace/start_dots_ocr.sh
 
 # Override the vLLM entrypoint
 ENTRYPOINT []
