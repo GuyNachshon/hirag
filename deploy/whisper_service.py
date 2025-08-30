@@ -16,7 +16,7 @@ app = FastAPI(title="Whisper Transcription Service", version="1.0.0")
 
 # Global model variable
 model = None
-MODEL_NAME = os.environ.get('MODEL_NAME', 'ivrit-ai/whisper-large-v3-turbo')
+MODEL_NAME = os.environ.get('MODEL_NAME', 'openai/whisper-large-v3')
 
 @app.on_event("startup")
 async def load_model():
