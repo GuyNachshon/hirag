@@ -30,21 +30,24 @@ ENV CUDA_VISIBLE_DEVICES=0
 # Expose port
 EXPOSE 8000
 
-# Use their exact startup command structure
-CMD ["/bin/bash", "-c", "\
-set -ex && \
-echo '--- Starting DotsOCR server ---' && \
-echo 'Modifying vllm entrypoint...' && \
-sed -i '/^from vllm\\.entrypoints\\.cli\\.main import main/a from DotsOCR import modeling_dots_ocr_vllm' $(which vllm) && \
-echo 'vllm script patched successfully' && \
-grep -A 1 'from vllm.entrypoints.cli.main import main' $(which vllm) && \
-echo 'Starting server...' && \
-exec vllm serve /workspace/weights/DotsOCR \
-    --tensor-parallel-size 1 \
-    --gpu-memory-utilization 0.95 \
-    --chat-template-content-format string \
-    --served-model-name model \
-    --trust-remote-code \
-    --host 0.0.0.0 \
-    --port 8000\
-"]
+# Create and use startup script
+RUN echo '#!/bin/bash\n\
+set -ex\n\
+echo "--- Starting DotsOCR server ---"\n\
+echo "Modifying vllm entrypoint..."\n\
+sed -i "/^from vllm\\.entrypoints\\.cli\\.main import main/a from DotsOCR import modeling_dots_ocr_vllm" $(which vllm)\n\
+echo "vllm script patched successfully"\n\
+grep -A 1 "from vllm.entrypoints.cli.main import main" $(which vllm)\n\
+echo "Starting server..."\n\
+exec vllm serve /workspace/weights/DotsOCR \\\n\
+    --tensor-parallel-size 1 \\\n\
+    --gpu-memory-utilization 0.95 \\\n\
+    --chat-template-content-format string \\\n\
+    --served-model-name model \\\n\
+    --trust-remote-code \\\n\
+    --host 0.0.0.0 \\\n\
+    --port 8000' > /workspace/start_dots_ocr.sh
+
+RUN chmod +x /workspace/start_dots_ocr.sh
+
+CMD ["/workspace/start_dots_ocr.sh"]
