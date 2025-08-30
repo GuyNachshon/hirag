@@ -4,7 +4,7 @@ import base64
 import math
 from PIL import Image
 import requests
-from dots_ocr.utils.image_utils import PILimage_to_base64
+from file_parser.utils.image import PILimage_to_base64
 from openai import OpenAI
 import os
 

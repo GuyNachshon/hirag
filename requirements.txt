@@ -30,3 +30,4 @@ future==1.0.0
 spire.doc
 spire.presentation
 PyMuPDF>=1.20.0
+docx2pdf
