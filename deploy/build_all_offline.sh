@@ -38,10 +38,15 @@ print_status "Docker is running. Starting build process..."
 SCRIPT_DIR="$(cd "$(dirname "$0")" && pwd)"
 PARENT_DIR="$(dirname "$SCRIPT_DIR")"
 
+print_status "Script directory: $SCRIPT_DIR"
+print_status "Parent directory: $PARENT_DIR"
+
 # Change to parent directory for correct build context
 cd "$PARENT_DIR"
 
-print_status "Working directory: $(pwd)"
+print_status "Changed to working directory: $(pwd)"
+print_status "Listing directory contents:"
+ls -la deploy/ | head -5
 
 # Build order: dependencies first, then services that depend on them
 BUILD_SERVICES=(
