@@ -12,10 +12,10 @@ from functools import wraps
 from hashlib import md5
 from typing import Any, Union
 from docx2pdf import convert
-from spire.doc import Document
-from spire.doc.common import FileFormat as dFormat
-from spire.presentation import Presentation
-from spire.presentation.common import FileFormat as pFormat
+from spire.doc import Document, FileFormat as dFormat
+from spire.doc.common import *
+from spire.presentation import Presentation, FileFormat as pFormat
+from spire.presentation.common import *
 import numpy as np
 import tiktoken
 
