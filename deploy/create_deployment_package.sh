@@ -63,6 +63,66 @@ check_prerequisites() {
     echo ""
 }
 
+# Function to ensure GCP bucket exists
+ensure_bucket_exists() {
+    print_step "Checking GCP bucket..."
+    
+    local bucket_name=$(echo "$GCP_BUCKET" | sed 's/gs:\/\///')
+    
+    # Check if bucket exists
+    if gsutil ls -b "$GCP_BUCKET" > /dev/null 2>&1; then
+        print_status "✓ Bucket exists: $GCP_BUCKET"
+    else
+        print_status "Bucket does not exist, creating: $GCP_BUCKET"
+        
+        # Get current project
+        local project_id=$(gcloud config get-value project 2>/dev/null)
+        if [ -z "$project_id" ]; then
+            print_error "No GCP project set. Please run: gcloud config set project YOUR_PROJECT_ID"
+            exit 1
+        fi
+        
+        # Create bucket with default settings
+        if gsutil mb -p "$project_id" "$GCP_BUCKET"; then
+            print_status "✓ Successfully created bucket: $GCP_BUCKET"
+            
+            # Set appropriate lifecycle policy to manage costs
+            cat > /tmp/lifecycle.json << EOF
+{
+  "rule": [
+    {
+      "action": {"type": "Delete"},
+      "condition": {
+        "age": 90,
+        "matchesStorageClass": ["STANDARD", "NEARLINE", "COLDLINE"]
+      }
+    }
+  ]
+}
+EOF
+            gsutil lifecycle set /tmp/lifecycle.json "$GCP_BUCKET" && \
+            print_status "✓ Set lifecycle policy (90 day retention)"
+            rm /tmp/lifecycle.json
+            
+        else
+            print_error "Failed to create bucket. Please create it manually:"
+            print_error "  gsutil mb -p $project_id $GCP_BUCKET"
+            exit 1
+        fi
+    fi
+    
+    # Test write permissions
+    echo "test" | gsutil cp - "$GCP_BUCKET/test-write-permission.txt" > /dev/null 2>&1
+    if gsutil rm "$GCP_BUCKET/test-write-permission.txt" > /dev/null 2>&1; then
+        print_status "✓ Write permissions confirmed"
+    else
+        print_error "No write permissions to bucket: $GCP_BUCKET"
+        exit 1
+    fi
+    
+    echo ""
+}
+
 # Function to build all images
 build_all_images() {
     print_step "Building all Docker images with optimizations..."
@@ -474,13 +534,24 @@ Create a complete RAG system deployment package and upload to GCP.
 
 OPTIONS:
     --bucket BUCKET     GCP bucket URL (default: $GCP_BUCKET)
-    --skip-build        Skip Docker image building step
+    --skip-build        Skip Docker image building step  
     --help              Show this help message
+
+NOTES:
+    • Automatically creates GCP bucket if it doesn't exist
+    • Sets 90-day lifecycle policy on new buckets to manage costs
+    • Requires gcloud authentication and appropriate GCP project permissions
 
 EXAMPLES:
     $0
     $0 --bucket gs://my-deployment-bucket
     $0 --skip-build --bucket gs://my-bucket
+
+PREREQUISITES:
+    • Docker running
+    • gcloud authenticated (gcloud auth login)
+    • Project set (gcloud config set project YOUR_PROJECT)
+    • ~150GB free disk space
 
 EOF
                 exit 0
@@ -494,6 +565,7 @@ EOF
     
     # Execute all steps
     check_prerequisites
+    ensure_bucket_exists
     
     if [ "$SKIP_BUILD" != "true" ]; then
         build_all_images

@@ -24,11 +24,13 @@ If you already have images built and want to test the packaging:
 ./create_deployment_package.sh --skip-build --bucket gs://baddon-ai-deployment
 ```
 
-### 3. Custom Bucket
+### 3. Custom Bucket (Auto-Created if Needed)
 
 ```bash
 ./create_deployment_package.sh --bucket gs://your-custom-bucket-name
 ```
+
+**Note**: If the bucket doesn't exist, you'll be prompted to create it automatically with a 90-day lifecycle policy.
 
 ## What You'll Get
 
