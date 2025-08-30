@@ -23,7 +23,7 @@ echo "📄 Starting DotsOCR server..."
 docker run -d \
   --name rag-dots-ocr \
   --network rag-network \
-  --gpus device=0 \
+  --gpus all \
   -p 8002:8000 \
   -v $(pwd)/data:/app/data \
   --restart unless-stopped \
@@ -38,7 +38,7 @@ echo "🧠 Starting gpt-oss LLM server..."
 docker run -d \
   --name rag-llm-server \
   --network rag-network \
-  --gpus device=1 \
+  --gpus all \
   -p 8000:8000 \
   -e MODEL_NAME="$GPT_OSS_MODEL" \
   -e TENSOR_PARALLEL=1 \
@@ -55,7 +55,7 @@ echo "🔍 Starting Embedding server..."
 docker run -d \
   --name rag-embedding-server \
   --network rag-network \
-  --gpus device=2 \
+  --gpus all \
   -p 8001:8000 \
   -e MODEL_NAME="$EMBEDDING_MODEL" \
   --restart unless-stopped \
