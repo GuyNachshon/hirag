@@ -21,7 +21,10 @@ COPY . .
 RUN cd HiRAG && pip install -e .
 
 # Create necessary directories
-RUN mkdir -p /app/logs /app/data
+RUN mkdir -p /app/logs /app/data /app/config
+
+# Create mount points for external configuration and data
+VOLUME ["/app/config", "/app/data"]
 
 # Set Python path
 ENV PYTHONPATH=/app

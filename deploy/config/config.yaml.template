@@ -1,0 +1,59 @@
+# RAG System Configuration Template for Offline Deployment
+# Copy this file to config.yaml and modify as needed
+
+# vLLM configuration - uses Docker container names for communication
+VLLM:
+    api_key: 0
+    llm:
+        # Choose your LLM model (comment/uncomment as needed):
+        # For smaller, faster model:
+        model: "Qwen/Qwen3-4B-Thinking-2507"
+        base_url: "http://rag-llm-server:8000/v1"
+        # For gpt-oss model (requires more GPU memory):
+        # model: "openai/gpt-oss-20b"  
+        # base_url: "http://rag-llm-server:8000/v1"
+        
+    embedding:
+        model: "Qwen/Qwen2-0.5B-Instruct"
+        base_url: "http://rag-embedding-server:8000/v1"
+
+# DotsOCR configuration - uses Docker container names
+dots_ocr:
+  ip: "rag-dots-ocr"
+  port: 8000
+  model_name: "model"
+
+# Model Parameters
+model_params:
+  openai_embedding_dim: 1536
+  glm_embedding_dim: 2048
+  vllm_embedding_dim: 2560
+  max_token_size: 8192
+
+# HiRAG Configuration
+hirag:
+  # Working directory - mounted from host
+  working_dir: "/app/data/working"
+  enable_llm_cache: false
+  enable_hierarchical_mode: true
+  embedding_batch_num: 6
+  embedding_func_max_async: 8
+  enable_naive_rag: true
+
+# Offline deployment specific settings
+deployment:
+  # Data directories (these will be mounted from host)
+  input_dir: "/app/data/input"      # Documents to be indexed
+  working_dir: "/app/data/working"  # HiRAG working directory  
+  logs_dir: "/app/data/logs"        # Application logs
+  cache_dir: "/app/data/cache"      # Model cache and embeddings
+  
+  # Network settings
+  docker_network: "rag-network"
+  
+  # Service ports (internal to Docker network)
+  services:
+    api: 8080
+    llm: 8000
+    embedding: 8000  
+    ocr: 8000
