@@ -1,10 +1,10 @@
 graspologic==3.4.1
 jsonlines==4.0.0
-matplotlib==3.10.0
+matplotlib
 nano_vectordb==0.0.2
 neo4j==5.25.0
 nest_asyncio==1.6.0
-networkx==3.3
+networkx
 numpy==1.26.4
 openai==1.61.1
 pandas==2.2.3
