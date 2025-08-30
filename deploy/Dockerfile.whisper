@@ -1,5 +1,5 @@
 # Whisper Transcription Server Dockerfile - Optimized
-# Hebrew-optimized transcription using ivrit-ai/whisper-large-v3-turbo
+# Hebrew-optimized transcription using ivrit-ai/whisper-large-v3
 
 FROM python:3.11-slim
 
@@ -10,6 +10,7 @@ RUN apt-get update && apt-get install -y \
     ffmpeg \
     libsndfile1 \
     curl \
+    build-essential \
     && rm -rf /var/lib/apt/lists/*
 
 # Set environment variables
@@ -17,7 +18,7 @@ ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 
 # Pre-download model during build (for offline deployment)
-ARG WHISPER_MODEL="openai/whisper-large-v3"
+ARG WHISPER_MODEL="ivrit-ai/whisper-large-v3"
 ENV MODEL_NAME=${WHISPER_MODEL}
 
 # Install Python dependencies and pre-download model in single layer
@@ -26,15 +27,19 @@ RUN set -e && \
     pip install --no-cache-dir \
         fastapi==0.104.1 \
         uvicorn==0.24.0 \
-        faster-whisper==1.0.1 \
+        transformers==4.41.2 \
+        torch==2.3.0 \
+        torchaudio==2.3.0 \
+        librosa==0.10.2 \
         python-multipart==0.0.6 \
         numpy==1.24.3 && \
     python3 -c "\
 import os; \
-from faster_whisper import WhisperModel; \
-model_name = os.environ.get('MODEL_NAME', 'openai/whisper-large-v3'); \
+from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq; \
+model_name = os.environ.get('MODEL_NAME', 'ivrit-ai/whisper-large-v3'); \
 print(f'Pre-downloading Whisper model: {model_name}'); \
-model = WhisperModel(model_name, device='cpu', compute_type='int8'); \
+processor = AutoProcessor.from_pretrained(model_name); \
+model = AutoModelForSpeechSeq2Seq.from_pretrained(model_name); \
 print(f'Whisper model {model_name} downloaded successfully')" && \
     pip cache purge && \
     rm -rf /tmp/* && \

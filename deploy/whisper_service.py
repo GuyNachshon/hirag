@@ -49,7 +49,7 @@ async def load_model():
 @app.get("/health")
 async def health_check():
     return {
-        "status": "healthy" if model is not None else "unhealthy",
+        "status": "healthy" if model is not None and processor is not None else "unhealthy",
         "service": "whisper-transcription",
         "model": MODEL_NAME,
         "version": "1.0.0"
@@ -57,7 +57,7 @@ async def health_check():
 
 @app.post("/transcribe")
 async def transcribe_audio(file: UploadFile = File(...)):
-    if model is None:
+    if model is None or processor is None:
         raise HTTPException(status_code=503, detail="Model not loaded")
     
     # Validate file type
@@ -86,36 +86,47 @@ async def transcribe_audio(file: UploadFile = File(...)):
             tmp_file_path = tmp_file.name
         
         try:
-            # Transcribe audio with Hebrew language explicitly set
-            segments, info = model.transcribe(
-                tmp_file_path, 
-                language="he",  # Explicitly set to Hebrew for ivrit-ai model
-                beam_size=5,
-                word_timestamps=False
-            )
+            # Load audio using librosa
+            audio_array, sampling_rate = librosa.load(tmp_file_path, sr=16000)
             
-            # Extract text from segments
-            transcribed_text = ""
-            segment_list = []
+            # Process audio
+            inputs = processor(audio_array, sampling_rate=16000, return_tensors="pt")
             
-            for segment in segments:
-                transcribed_text += segment.text + " "
-                segment_list.append({
-                    "start": segment.start,
-                    "end": segment.end,
-                    "text": segment.text.strip()
-                })
+            # Move inputs to same device as model
+            device = next(model.parameters()).device
+            inputs = {k: v.to(device) for k, v in inputs.items()}
+            
+            # Generate transcription
+            with torch.no_grad():
+                # Force language to Hebrew
+                forced_decoder_ids = processor.get_decoder_prompt_ids(language="hebrew", task="transcribe")
+                predicted_ids = model.generate(
+                    **inputs,
+                    forced_decoder_ids=forced_decoder_ids,
+                    max_new_tokens=448
+                )
+            
+            # Decode the transcription
+            transcription = processor.batch_decode(predicted_ids, skip_special_tokens=True)
+            transcribed_text = transcription[0] if transcription else ""
+            
+            # Calculate duration
+            duration = len(audio_array) / sampling_rate
             
             result = {
                 "success": True,
                 "text": transcribed_text.strip(),
-                "language": info.language,
-                "language_probability": info.language_probability,
-                "duration": info.duration,
-                "segments": segment_list
+                "language": "he",
+                "language_probability": 1.0,  # Forced Hebrew
+                "duration": duration,
+                "segments": [{
+                    "start": 0.0,
+                    "end": duration,
+                    "text": transcribed_text.strip()
+                }]
             }
             
-            logger.info(f"Transcription completed. Duration: {info.duration:.2f}s, Language: {info.language}")
+            logger.info(f"Transcription completed. Duration: {duration:.2f}s, Text: {transcribed_text[:100]}...")
             return JSONResponse(content=result)
             
         finally:
