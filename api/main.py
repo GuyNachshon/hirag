@@ -157,6 +157,24 @@ async def lifespan(app: FastAPI):
         pass
     logger.main_logger.info("Shutdown complete")
 
+
+# Create FastAPI app
+app = FastAPI(
+    title="Offline RAG API",
+    description="API for file search and conversational RAG using local models",
+    version="1.0.0",
+    lifespan=lifespan
+)
+
+# Add CORS middleware
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],  # Configure based on your UI domain
+    allow_credentials=True,
+    allow_methods=["*"],
+    allow_headers=["*"],
+)
+
 # Add logging middleware
 @app.middleware("http")
 async def log_requests(request: Request, call_next):
@@ -202,23 +220,6 @@ async def log_requests(request: Request, call_next):
             "duration_seconds": round(duration, 4)
         })
         raise
-
-# Create FastAPI app
-app = FastAPI(
-    title="Offline RAG API",
-    description="API for file search and conversational RAG using local models",
-    version="1.0.0",
-    lifespan=lifespan
-)
-
-# Add CORS middleware
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],  # Configure based on your UI domain
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
-)
 
 @app.get("/", response_model=HealthResponse)
 async def root():
