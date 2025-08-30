@@ -1,43 +1,55 @@
-# Small LLM Server Dockerfile - Optimized
-FROM vllm/vllm-openai:latest
+# Multi-stage build for Small LLM Server - Ultra Optimized
+# Stage 1: Model download
+FROM python:3.10-slim as model-downloader
+
+RUN pip install --no-cache-dir huggingface-hub requests
+
+ARG SMALL_MODEL="Qwen/Qwen3-4B-Thinking-2507"
+RUN python3 -c "
+import os; 
+from huggingface_hub import snapshot_download; 
+model_name = '${SMALL_MODEL}'; 
+print(f'Pre-downloading model: {model_name}'); 
+snapshot_download(repo_id=model_name, cache_dir='/models', local_files_only=False, resume_download=True); 
+print(f'Model {model_name} downloaded successfully')"
+
+# Stage 2: Runtime
+FROM vllm/vllm-openai:latest as runtime
 
 WORKDIR /app
+
+# Copy model files
+COPY --from=model-downloader /models /root/.cache/huggingface/hub
 
 # Set environment variables
 ENV CUDA_VISIBLE_DEVICES=0
 ENV VLLM_WORKER_MULTIPROC_METHOD=spawn
+ENV MODEL_NAME=${SMALL_MODEL:-"Qwen/Qwen3-4B-Thinking-2507"}
 
-# Use a smaller, reliable model
-ARG SMALL_MODEL="Qwen/Qwen3-4B-Thinking-2507"
-ENV MODEL_NAME=${SMALL_MODEL}
-
-# Combined optimization: Download model, create script, and cleanup in single layer
+# Create startup script and cleanup
 RUN set -e && \
-    # Pre-download model \
-    python3 -c "\
-import os; \
-from huggingface_hub import snapshot_download; \
-model_name = os.environ.get('MODEL_NAME', 'Qwen/Qwen3-4B-Thinking-2507'); \
-print(f'Pre-downloading model: {model_name}'); \
-snapshot_download(repo_id=model_name, cache_dir='/root/.cache/huggingface/hub', local_files_only=False, resume_download=True); \
-print(f'Model {model_name} downloaded successfully')" && \
-    # Create startup script \
-    printf '#!/bin/bash\nMODEL=${MODEL_NAME:-"Qwen/Qwen3-4B-Thinking-2507"}\nTENSOR_PARALLEL=${TENSOR_PARALLEL:-1}\nGPU_MEMORY=${GPU_MEMORY:-0.3}\n\necho "Starting small LLM server with model: $MODEL"\necho "Model is pre-downloaded for offline deployment"\n\nvllm serve $MODEL --host 0.0.0.0 --port 8000 --tensor-parallel-size $TENSOR_PARALLEL --gpu-memory-utilization $GPU_MEMORY --trust-remote-code\n' > /app/start_small_llm.sh && \
+    printf '#!/bin/bash\nset -e\nMODEL=${MODEL_NAME:-"Qwen/Qwen3-4B-Thinking-2507"}\nTENSOR_PARALLEL=${TENSOR_PARALLEL:-1}\nGPU_MEMORY=${GPU_MEMORY:-0.3}\n\necho "Starting small LLM server with model: $MODEL"\necho "Model is pre-cached for offline deployment"\n\nexec vllm serve "$MODEL" --host 0.0.0.0 --port 8000 --tensor-parallel-size "$TENSOR_PARALLEL" --gpu-memory-utilization "$GPU_MEMORY" --trust-remote-code\n' > /app/start_small_llm.sh && \
     chmod +x /app/start_small_llm.sh && \
-    # Cleanup to reduce image size \
+    # Aggressive cleanup \
     pip cache purge && \
+    apt-get autoremove -y && \
+    apt-get autoclean && \
+    rm -rf /var/lib/apt/lists/* && \
     rm -rf /tmp/* && \
     rm -rf /var/cache/* && \
     rm -rf /root/.cache/pip && \
-    # Keep HuggingFace cache but remove unnecessary files \
+    rm -rf /usr/share/doc/* && \
+    rm -rf /usr/share/man/* && \
     find /root/.cache/huggingface -name "*.tmp*" -delete 2>/dev/null || true && \
-    # Remove build artifacts and unnecessary packages \
-    apt-get autoremove -y && \
-    apt-get autoclean && \
-    rm -rf /var/lib/apt/lists/*
+    find /root/.cache/huggingface -name "*.lock" -delete 2>/dev/null || true && \
+    find /root/.cache/huggingface -name ".gitattributes" -delete 2>/dev/null || true
 
 # Expose port
 EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
 
 # Override the vLLM entrypoint
 ENTRYPOINT []
