@@ -7,12 +7,12 @@ RUN pip install --no-cache-dir huggingface-hub requests
 
 # Pre-download gpt-oss model
 ARG GPT_OSS_MODEL="openai/gpt-oss-20b"
-RUN python3 -c "
-import os; 
-from huggingface_hub import snapshot_download; 
-model_name = '${GPT_OSS_MODEL}'; 
-print(f'Pre-downloading model: {model_name}'); 
-snapshot_download(repo_id=model_name, cache_dir='/models', local_files_only=False, resume_download=True); 
+RUN python3 -c "\
+import os; \
+from huggingface_hub import snapshot_download; \
+model_name = '${GPT_OSS_MODEL}'; \
+print(f'Pre-downloading model: {model_name}'); \
+snapshot_download(repo_id=model_name, cache_dir='/models', local_files_only=False, resume_download=True); \
 print(f'Model {model_name} downloaded successfully')"
 
 # Stage 2: Runtime image with pre-built vLLM

@@ -5,12 +5,12 @@ FROM python:3.10-slim as model-downloader
 RUN pip install --no-cache-dir huggingface-hub requests
 
 ARG SMALL_MODEL="Qwen/Qwen3-4B-Thinking-2507"
-RUN python3 -c "
-import os; 
-from huggingface_hub import snapshot_download; 
-model_name = '${SMALL_MODEL}'; 
-print(f'Pre-downloading model: {model_name}'); 
-snapshot_download(repo_id=model_name, cache_dir='/models', local_files_only=False, resume_download=True); 
+RUN python3 -c "\
+import os; \
+from huggingface_hub import snapshot_download; \
+model_name = '${SMALL_MODEL}'; \
+print(f'Pre-downloading model: {model_name}'); \
+snapshot_download(repo_id=model_name, cache_dir='/models', local_files_only=False, resume_download=True); \
 print(f'Model {model_name} downloaded successfully')"
 
 # Stage 2: Runtime
