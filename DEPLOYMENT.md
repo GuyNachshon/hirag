@@ -19,33 +19,24 @@ Complete deployment guide for the offline RAG system using individual Docker con
 - **Docker** with GPU support (nvidia-docker2)
 - **NVIDIA GPUs** (minimum 3 GPUs recommended)
 - **CUDA** drivers installed
-- **Python 3.9+** (for model download scripts)
+- **Python 3.9+**
 - **Sufficient disk space** (100GB+ for models)
 
 ## 🚀 Quick Start
 
-### 1. Download Models
-```bash
-# Download required models (DotsOCR will be downloaded)
-./scripts/download_models.sh
-
-# Note: You'll need to manually specify your LLM and embedding models
-# Edit the script to add your specific model repositories
-```
-
-### 2. Build Docker Images
+### 1. Build Docker Images
 ```bash
 # Build all required Docker images
 ./scripts/build_images.sh
 ```
 
-### 3. Start Services
+### 2. Start Services
 ```bash
 # Start all services in the correct order
 ./scripts/start_services.sh
 ```
 
-### 4. Verify Deployment
+### 3. Verify Deployment
 ```bash
 # Check service health
 curl http://localhost:8002/health  # DotsOCR
@@ -88,14 +79,12 @@ open http://localhost:8080/docs
 ## 🔧 Configuration
 
 ### Model Configuration
-Edit the model paths in `scripts/start_services.sh`:
+Models are configured via environment variables in `scripts/start_services.sh`:
 
 ```bash
-# LLM Server
--e MODEL_PATH="/models/YOUR_LLM_MODEL" \
-
-# Embedding Server  
--e MODEL_PATH="/models/YOUR_EMBEDDING_MODEL" \
+# Set model choices (can be overridden via environment variables)
+GPT_OSS_MODEL=${GPT_OSS_MODEL:-"openai/gpt-oss-20b"}
+EMBEDDING_MODEL=${EMBEDDING_MODEL:-"Qwen/Qwen2-0.5B-Instruct"}
 ```
 
 ### API Configuration
@@ -105,10 +94,10 @@ Update `HiRAG/config.yaml` with correct service endpoints:
 VLLM:
     api_key: 0
     llm:
-        model: "YOUR_LLM_MODEL"
+        model: "openai/gpt-oss-20b"
         base_url: "http://rag-llm-server:8000/v1"
     embedding:
-        model: "YOUR_EMBEDDING_MODEL"
+        model: "Qwen/Qwen2-0.5B-Instruct"
         base_url: "http://rag-embedding-server:8000/v1"
 
 # DotsOCR configuration
