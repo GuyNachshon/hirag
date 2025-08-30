@@ -2,7 +2,7 @@
 # Builds the Vue.js app and serves it with nginx
 
 # Build stage - compile the Vue.js application
-FROM node:18-alpine as builder
+FROM node:20-alpine as builder
 
 WORKDIR /app
 
