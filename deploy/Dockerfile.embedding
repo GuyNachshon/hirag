@@ -1,0 +1,30 @@
+# Embedding Server Dockerfile  
+FROM vllm/vllm-openai:latest
+
+WORKDIR /app
+
+# Set environment variables
+ENV CUDA_VISIBLE_DEVICES=0
+
+# Expose port
+EXPOSE 8000
+
+# Model will be downloaded automatically by vLLM on first run
+ARG EMBEDDING_MODEL="Qwen/Qwen2-0.5B-Instruct"
+ENV MODEL_NAME=${EMBEDDING_MODEL}
+
+# Create startup script
+RUN echo '#!/bin/bash\n\
+MODEL=${MODEL_NAME:-"Qwen/Qwen2-0.5B-Instruct"}\n\
+\n\
+echo "Starting Embedding server with model: $MODEL"\n\
+echo "vLLM will automatically download the model on first run"\n\
+\n\
+vllm serve $MODEL \\\n\
+  --host 0.0.0.0 \\\n\
+  --port 8000 \\\n\
+  --trust-remote-code' > /app/start_embedding.sh
+
+RUN chmod +x /app/start_embedding.sh
+
+CMD ["/app/start_embedding.sh"]
