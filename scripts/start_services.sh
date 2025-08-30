@@ -8,7 +8,7 @@ echo "🚀 Starting offline RAG services..."
 
 # Set model choices (can be overridden via environment variables)
 GPT_OSS_MODEL=${GPT_OSS_MODEL:-"openai/gpt-oss-20b"}
-EMBEDDING_MODEL=${EMBEDDING_MODEL:-"Qwen/Qwen2-0.5B-Instruct"}
+EMBEDDING_MODEL=${EMBEDDING_MODEL:-"Qwen/Qwen3-Embedding-4B"}
 
 echo "🔧 Starting with models:"
 echo "   gpt-oss: $GPT_OSS_MODEL" 
