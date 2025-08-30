@@ -1,8 +1,7 @@
 <template>
   <div class="file-search">
     <div class="search-header">
-      <h1>File Search</h1>
-      <p>Search through your indexed documents using semantic search</p>
+      <h1>חיפוש מסמכים</h1>
     </div>
 
     <div class="search-container">
@@ -11,7 +10,7 @@
           v-model="searchQuery" 
           @keyup.enter="performSearch"
           type="text" 
-          placeholder="Enter your search query..." 
+          placeholder="חפש.י מסמכים"
           class="search-input"
           :disabled="isSearching"
         />
@@ -20,14 +19,14 @@
           class="search-button"
           :disabled="isSearching || !searchQuery.trim()"
         >
-          <span v-if="isSearching">Searching...</span>
-          <span v-else>Search</span>
+          <span v-if="isSearching">מחפש...</span>
+          <span v-else>חיפוש</span>
         </button>
       </div>
 
       <div class="search-options">
         <label class="option">
-          Max Results:
+          מספר תוצאות מקסימלי:
           <select v-model="maxResults">
             <option value="5">5</option>
             <option value="10">10</option>
@@ -44,8 +43,8 @@
 
     <div v-if="results.length > 0" class="search-results">
       <div class="results-header">
-        <h2>Search Results ({{ results.length }})</h2>
-        <p v-if="searchPerformed">Results for: "<strong>{{ lastSearchQuery }}</strong>"</p>
+        <h2>תוצאות חיפוש ({{ results.length }})</h2>
+        <p v-if="searchPerformed">תוצאות עבור: "<strong>{{ lastSearchQuery }}</strong>"</p>
       </div>
 
       <div class="results-list">
@@ -57,7 +56,7 @@
           <div class="result-header">
             <h3 class="result-title">{{ result.file_name || extractFileName(result.file_path) }}</h3>
             <div class="result-meta">
-              <span class="result-score">Score: {{ (result.score * 100).toFixed(1) }}%</span>
+              <span class="result-score">ציון: {{ (result.score * 100).toFixed(1) }}%</span>
               <span class="result-path">{{ result.file_path }}</span>
             </div>
           </div>
@@ -76,16 +75,16 @@
     </div>
 
     <div v-else-if="searchPerformed && !isSearching" class="no-results">
-      <p>No results found for "{{ lastSearchQuery }}". Try different search terms.</p>
+      <p>לא נמצאו תוצאות עבור "{{ lastSearchQuery }}". נסו מילות חיפוש שונות.</p>
     </div>
 
     <div v-if="!searchPerformed && !isSearching" class="search-help">
-      <h3>Search Tips</h3>
+      <h3>טיפים לחיפוש</h3>
       <ul>
-        <li>Use natural language queries</li>
-        <li>Try different keywords and phrases</li>
-        <li>Search is powered by semantic understanding</li>
-        <li>Results are ranked by relevance</li>
+        <li>השתמשו בשאילתות בשפה טבעית</li>
+        <li>נסו מילות מפתח וביטויים שונים</li>
+        <li>החיפוש מופעל על ידי הבנה סמנטית</li>
+        <li>התוצאות מדורגות לפי רלוונטיות</li>
       </ul>
     </div>
   </div>
@@ -120,11 +119,11 @@ export default {
           results.value = response.results || []
           searchPerformed.value = true
         } else {
-          error.value = response.error || 'Search failed'
+          error.value = response.error || 'החיפוש נכשל'
           results.value = []
         }
       } catch (err) {
-        error.value = 'Search failed: ' + err.message
+        error.value = 'החיפוש נכשל: ' + err.message
         results.value = []
       } finally {
         isSearching.value = false
@@ -132,7 +131,7 @@ export default {
     }
 
     const extractFileName = (filePath) => {
-      if (!filePath) return 'Unknown File'
+      if (!filePath) return 'קובץ לא ידוע'
       const parts = filePath.split('/')
       return parts[parts.length - 1] || filePath
     }
@@ -157,6 +156,7 @@ export default {
   max-width: 1200px;
   margin: 0 auto;
   padding: 2rem;
+  direction: rtl;
 }
 
 .search-header {
