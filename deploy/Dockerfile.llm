@@ -1,4 +1,4 @@
-# gpt-oss LLM Server Dockerfile
+# gpt-oss LLM Server Dockerfile (Large Model)
 FROM vllm/vllm-openai:latest
 
 WORKDIR /app

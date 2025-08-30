@@ -1,0 +1,23 @@
+# Small LLM Server Dockerfile (Qwen2-0.5B-Instruct)
+FROM vllm/vllm-openai:latest
+
+WORKDIR /app
+
+# Set environment variables
+ENV CUDA_VISIBLE_DEVICES=0
+
+# Expose port
+EXPOSE 8000
+
+# Use a smaller, reliable model
+ARG SMALL_MODEL="Qwen/Qwen3-4B-Thinking-2507"
+ENV MODEL_NAME=${SMALL_MODEL}
+
+# Create startup script
+RUN printf '#!/bin/bash\nMODEL=${MODEL_NAME:-"Qwen/Qwen3-4B-Thinking-2507"}\nTENSOR_PARALLEL=${TENSOR_PARALLEL:-1}\nGPU_MEMORY=${GPU_MEMORY:-0.3}\n\necho "Starting small LLM server with model: $MODEL"\necho "vLLM will automatically download the model on first run"\n\nvllm serve $MODEL --host 0.0.0.0 --port 8000 --tensor-parallel-size $TENSOR_PARALLEL --gpu-memory-utilization $GPU_MEMORY --trust-remote-code\n' > /app/start_small_llm.sh
+
+RUN chmod +x /app/start_small_llm.sh
+
+# Override the vLLM entrypoint
+ENTRYPOINT []
+CMD ["/app/start_small_llm.sh"]
