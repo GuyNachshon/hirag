@@ -10,7 +10,7 @@ aiofiles
 # HiRAG dependencies (from HiRAG/requirements.txt)
 graspologic==3.4.1
 jsonlines==4.0.0
-matplotlib==3.10.0
+matplotlib>=3.5.0
 nano_vectordb==0.0.2
 neo4j==5.25.0
 nest_asyncio==1.6.0
