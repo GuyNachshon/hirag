@@ -23,6 +23,12 @@ dots_ocr:
   port: 8000
   model_name: "model"
 
+# Whisper configuration - uses Docker container names
+whisper:
+  base_url: "http://rag-whisper:8004"
+  model: "ivrit-ai/whisper-large-v3-turbo"
+  language: "he"
+
 # Model Parameters
 model_params:
   openai_embedding_dim: 1536
@@ -57,3 +63,4 @@ deployment:
     llm: 8000
     embedding: 8000  
     ocr: 8000
+    whisper: 8004

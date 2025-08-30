@@ -54,6 +54,7 @@ BUILD_SERVICES=(
     "embedding:deploy/Dockerfile.embedding:rag-embedding-server" 
     "llm-small:deploy/Dockerfile.llm-small:rag-llm-small"
     "llm-gptoss:deploy/Dockerfile.llm:rag-llm-gptoss"
+    "whisper:deploy/Dockerfile.whisper:rag-whisper"
     "api:Dockerfile:rag-api"
     "frontend:deploy/Dockerfile.frontend:rag-frontend"
 )

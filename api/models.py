@@ -87,3 +87,23 @@ class FileUploadResponse(BaseModel):
     upload_time: datetime
     processing_status: str
     message: str
+
+# Audio transcription models
+class TranscriptionSegment(BaseModel):
+    start: float
+    end: float
+    text: str
+
+class TranscriptionResponse(BaseModel):
+    success: bool
+    text: str
+    language: str
+    language_probability: float
+    duration: float
+    segments: List[TranscriptionSegment]
+    message: Optional[str] = None
+
+class TranscriptionErrorResponse(BaseModel):
+    success: bool = False
+    error: str
+    message: str

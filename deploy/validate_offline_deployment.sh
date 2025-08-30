@@ -57,7 +57,7 @@ validate_service() {
 
 # Check Docker containers are running
 print_test "Checking container status..."
-CONTAINERS=("rag-dots-ocr" "rag-embedding-server" "rag-llm-server" "rag-api")
+CONTAINERS=("rag-dots-ocr" "rag-embedding-server" "rag-llm-server" "rag-whisper" "rag-api")
 
 for container in "${CONTAINERS[@]}"; do
     if docker ps | grep -q "$container"; then
@@ -86,6 +86,9 @@ validate_service "Embedding Service" "http://localhost:8001/health" "200"
 
 # Test LLM service
 validate_service "LLM Service" "http://localhost:8003/health" "200"
+
+# Test Whisper service
+validate_service "Whisper Service" "http://localhost:8004/health" "200"
 
 echo ""
 

@@ -25,7 +25,7 @@ from .models import (
     ChatSession, ChatMessage, ChatMessageRequest, ChatMessageResponse,
     SessionCreateRequest, SessionCreateResponse, HealthResponse
 )
-from .services import ChatSessionService, FileSearchService, RAGService
+from .services import ChatSessionService, FileSearchService, RAGService, TranscriptionService
 
 # Load configuration
 config_path = Path(__file__).parent.parent / "HiRAG" / "config.yaml"
@@ -37,6 +37,7 @@ hirag_instance = None
 chat_service = None
 file_search_service = None
 rag_service = None
+transcription_service = None
 
 @dataclass
 class EmbeddingFunc:
@@ -112,7 +113,7 @@ async def vllm_model_if_cache(prompt, system_prompt=None, history_messages=[], *
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize services on startup"""
-    global hirag_instance, chat_service, file_search_service, rag_service
+    global hirag_instance, chat_service, file_search_service, rag_service, transcription_service
     
     # Setup logging
     logger = setup_logging()
@@ -139,6 +140,7 @@ async def lifespan(app: FastAPI):
         chat_service = ChatSessionService()
         file_search_service = FileSearchService(hirag_instance)
         rag_service = RAGService(hirag_instance, config)
+        transcription_service = TranscriptionService(config)
         logger.main_logger.info("All services initialized successfully")
         
         logger.main_logger.info("Offline RAG API startup complete")
@@ -244,7 +246,8 @@ async def health_check():
     )
 
 # Include routers
-from .routers import file_search, chat
+from .routers import file_search, chat, transcription
 
 app.include_router(file_search.router, prefix="/api", tags=["file-search"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
+app.include_router(transcription.router, prefix="/api", tags=["transcription"])

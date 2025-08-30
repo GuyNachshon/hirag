@@ -27,6 +27,7 @@ IMAGES=(
     "rag-embedding-server:latest"
     "rag-llm-small:latest"
     "rag-llm-gptoss:latest"
+    "rag-whisper:latest"
     "rag-api:latest"
     "rag-frontend:latest"
 )

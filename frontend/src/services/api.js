@@ -140,15 +140,45 @@ export const api = {
     }
   },
 
-  // Audio transcription - placeholder for future whisper integration
+  // Audio transcription using Whisper service
   async transcribeAudio(file) {
     try {
-      // TODO: Implement whisper transcription endpoint when ready
-      console.warn('Audio transcription not yet implemented in new API');
-      return { success: false, error: 'Transcription endpoint not available' };
+      const formData = new FormData();
+      formData.append('file', file);
+
+      const response = await fetch(`${API_BASE_URL}/api/transcribe`, {
+        method: 'POST',
+        body: formData,
+      });
+
+      if (!response.ok) {
+        const errorData = await response.json();
+        return { 
+          success: false, 
+          error: errorData.message || errorData.error || `HTTP ${response.status}` 
+        };
+      }
+
+      const result = await response.json();
+      
+      // Check if the service returned an error response
+      if (result.success === false) {
+        return result; // Already has success: false and error message
+      }
+
+      // Return successful transcription
+      return {
+        success: true,
+        text: result.text,
+        language: result.language,
+        duration: result.duration,
+        segments: result.segments || [],
+        message: result.message
+      };
+
     } catch (error) {
       console.error('Transcription failed:', error);
-      return { success: false, error: error.message };
+      return { success: false, error: error.message || 'Network error during transcription' };
     }
   },
 

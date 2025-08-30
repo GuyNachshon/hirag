@@ -101,7 +101,7 @@ fi
 
 # Stop any existing containers
 print_header "5. Cleaning up existing containers..."
-CONTAINERS=("rag-dots-ocr" "rag-embedding-server" "rag-llm-server" "rag-api" "rag-frontend")
+CONTAINERS=("rag-dots-ocr" "rag-embedding-server" "rag-llm-server" "rag-whisper" "rag-api" "rag-frontend")
 
 for container in "${CONTAINERS[@]}"; do
     if docker ps -a | grep -q "$container"; then
@@ -147,9 +147,20 @@ docker run -d \
 
 print_status "✓ LLM server started"
 
+# Start Whisper service
+print_status "Starting Whisper transcription service..."
+docker run -d \
+    --name rag-whisper \
+    --network "$NETWORK_NAME" \
+    --gpus all \
+    -p 8004:8004 \
+    rag-whisper:latest
+
+print_status "✓ Whisper service started"
+
 # Wait a bit for services to initialize
-print_status "Waiting 10 seconds for services to initialize..."
-sleep 10
+print_status "Waiting 15 seconds for services to initialize..."
+sleep 15
 
 # Start API server
 print_status "Starting API service..."

@@ -13,7 +13,8 @@ from hirag.base import BaseKVStorage
 from hirag._utils import compute_args_hash
 from .models import (
     FileResult, FileSearchResponse, 
-    ChatSession, ChatMessage, MessageRole, ChatMessageResponse
+    ChatSession, ChatMessage, MessageRole, ChatMessageResponse,
+    TranscriptionResponse, TranscriptionSegment, TranscriptionErrorResponse
 )
 from .logger import get_logger
 
@@ -339,3 +340,110 @@ class RAGService:
         except Exception as e:
             # Return error message if vLLM call fails
             return f"I apologize, but I'm having trouble generating a response. Error: {str(e)}"
+
+
+class TranscriptionService:
+    """Service for audio transcription using Whisper"""
+    
+    def __init__(self, config: Dict[str, Any]):
+        self.config = config
+        self.whisper_config = config.get('whisper', {})
+        self.base_url = self.whisper_config.get('base_url', 'http://rag-whisper:8004')
+        self.logger = get_logger()
+    
+    async def transcribe_audio(self, audio_file_path: str, filename: str) -> TranscriptionResponse:
+        """Transcribe audio file using Whisper service"""
+        import aiofiles
+        import aiohttp
+        
+        start_time = time.time()
+        
+        self.logger.main_logger.info(f"Starting transcription of {filename}")
+        
+        try:
+            # Read audio file
+            async with aiofiles.open(audio_file_path, 'rb') as f:
+                audio_content = await f.read()
+            
+            # Prepare multipart form data
+            data = aiohttp.FormData()
+            data.add_field('file', audio_content, filename=filename, content_type='audio/*')
+            
+            # Call Whisper service
+            async with aiohttp.ClientSession() as session:
+                async with session.post(
+                    f"{self.base_url}/transcribe",
+                    data=data,
+                    timeout=aiohttp.ClientTimeout(total=300)  # 5 minutes timeout
+                ) as response:
+                    if response.status == 200:
+                        result = await response.json()
+                        
+                        processing_time = time.time() - start_time
+                        
+                        # Convert segments to our model
+                        segments = [
+                            TranscriptionSegment(
+                                start=seg['start'],
+                                end=seg['end'],
+                                text=seg['text']
+                            )
+                            for seg in result.get('segments', [])
+                        ]
+                        
+                        transcription_response = TranscriptionResponse(
+                            success=True,
+                            text=result.get('text', ''),
+                            language=result.get('language', 'he'),
+                            language_probability=result.get('language_probability', 0.0),
+                            duration=result.get('duration', 0.0),
+                            segments=segments,
+                            message=f"Transcription completed in {processing_time:.2f}s"
+                        )
+                        
+                        self.logger.log_performance(
+                            operation="audio_transcription",
+                            duration=processing_time,
+                            metadata={
+                                "filename": filename,
+                                "duration": result.get('duration', 0.0),
+                                "language": result.get('language', 'he'),
+                                "text_length": len(result.get('text', ''))
+                            }
+                        )
+                        
+                        self.logger.main_logger.info(
+                            f"Transcription completed for {filename} in {processing_time:.2f}s"
+                        )
+                        
+                        return transcription_response
+                    
+                    else:
+                        error_text = await response.text()
+                        self.logger.main_logger.error(
+                            f"Whisper service error {response.status}: {error_text}"
+                        )
+                        return TranscriptionErrorResponse(
+                            error=f"Whisper service error: {response.status}",
+                            message=error_text
+                        )
+        
+        except asyncio.TimeoutError:
+            error_msg = "Transcription timeout - audio file may be too long"
+            self.logger.main_logger.error(error_msg)
+            return TranscriptionErrorResponse(
+                error="timeout",
+                message=error_msg
+            )
+        
+        except Exception as e:
+            processing_time = time.time() - start_time
+            self.logger.log_error(e, {
+                "operation": "audio_transcription",
+                "filename": filename,
+                "processing_time": processing_time
+            })
+            return TranscriptionErrorResponse(
+                error=str(e),
+                message=f"Transcription failed: {str(e)}"
+            )
