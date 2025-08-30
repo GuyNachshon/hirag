@@ -1,0 +1,32 @@
+# vLLM configuration
+VLLM:
+    api_key: 0
+    llm:
+        model: "openai/gpt-oss-20b"
+        base_url: "http://rag-llm-server:8000/v1"
+    embedding:
+        model: "Qwen/Qwen2-0.5B-Instruct"
+        base_url: "http://rag-embedding-server:8000/v1"
+
+# DotsOCR configuration
+dots_ocr:
+  ip: "rag-dots-ocr"
+  port: 8000
+  model_name: "model"
+
+
+# Model Parameters
+model_params:
+  openai_embedding_dim: 1536
+  glm_embedding_dim: 2048
+  vllm_embedding_dim: 2560
+  max_token_size: 8192
+
+# HiRAG Configuration
+hirag:
+  working_dir: "your_work_dir"
+  enable_llm_cache: false
+  enable_hierarchical_mode: true
+  embedding_batch_num: 6
+  embedding_func_max_async: 8
+  enable_naive_rag: true
