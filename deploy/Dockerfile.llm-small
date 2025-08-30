@@ -15,23 +15,13 @@ ARG SMALL_MODEL="Qwen/Qwen3-4B-Thinking-2507"
 ENV MODEL_NAME=${SMALL_MODEL}
 
 # Pre-download model during build (for offline deployment)
-RUN python -c "
-import os
-from huggingface_hub import snapshot_download
-model_name = os.environ.get('MODEL_NAME', 'Qwen/Qwen3-4B-Thinking-2507')
-print(f'Pre-downloading model: {model_name}')
-try:
-    snapshot_download(
-        repo_id=model_name,
-        cache_dir='/root/.cache/huggingface/hub',
-        local_files_only=False,
-        resume_download=True
-    )
-    print(f'Model {model_name} downloaded successfully')
-except Exception as e:
-    print(f'Error downloading model: {e}')
-    exit(1)
-"
+RUN python3 -c "\
+import os; \
+from huggingface_hub import snapshot_download; \
+model_name = os.environ.get('MODEL_NAME', 'Qwen/Qwen3-4B-Thinking-2507'); \
+print(f'Pre-downloading model: {model_name}'); \
+snapshot_download(repo_id=model_name, cache_dir='/root/.cache/huggingface/hub', local_files_only=False, resume_download=True); \
+print(f'Model {model_name} downloaded successfully')"
 
 # Create startup script
 RUN printf '#!/bin/bash\nMODEL=${MODEL_NAME:-"Qwen/Qwen3-4B-Thinking-2507"}\nTENSOR_PARALLEL=${TENSOR_PARALLEL:-1}\nGPU_MEMORY=${GPU_MEMORY:-0.3}\n\necho "Starting small LLM server with model: $MODEL"\necho "Model is pre-downloaded for offline deployment"\n\nvllm serve $MODEL --host 0.0.0.0 --port 8000 --tensor-parallel-size $TENSOR_PARALLEL --gpu-memory-utilization $GPU_MEMORY --trust-remote-code\n' > /app/start_small_llm.sh
