@@ -11,6 +11,7 @@ RUN pip install --upgrade pip && \
 
 # Set environment variables
 ENV CUDA_VISIBLE_DEVICES=0
+ENV VLLM_WORKER_MULTIPROC_METHOD=spawn
 
 # Expose port
 EXPOSE 8000
