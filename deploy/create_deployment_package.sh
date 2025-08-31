@@ -209,15 +209,14 @@ create_package_structure() {
     print_status "✓ Package structure created: $PACKAGE_DIR"
 }
 
-# Function to export Docker images
-export_docker_images() {
-    print_step "Exporting Docker images..."
+# Function to export and upload Docker images
+export_and_upload_images() {
+    print_step "Exporting and uploading Docker images to GCS..."
     
     local images=(
         "rag-frontend:latest"
         "rag-api:optimized"
         "rag-llm-gptoss:latest"
-        "rag-llm-small:latest"
         "rag-embedding-server:tgi-optimized"
         "rag-dots-ocr:optimized"
         "rag-whisper:latest"
@@ -228,27 +227,60 @@ export_docker_images() {
     for image in "${images[@]}"; do
         local safe_name=$(echo "$image" | sed 's/:/_/g' | sed 's/\//_/g')
         local tar_file="${safe_name}.tar"
+        local compressed_file="${safe_name}.tar.gz"
         
-        # Check if image was already exported
-        if [[ -f "$tar_file" && -s "$tar_file" ]]; then
-            local file_size=$(du -sh "$tar_file" | cut -f1)
-            print_status "✓ $image already exported (${tar_file}, ${file_size})"
+        print_status "Processing $image..."
+        
+        # Check if already uploaded to GCS
+        if gsutil ls "$GCP_BUCKET/$compressed_file" >/dev/null 2>&1; then
+            print_status "✓ $image already uploaded to GCS"
             continue
         fi
         
-        # Remove incomplete files
-        rm -f "$tar_file" "${tar_file}.tmp" ".tmp-${tar_file}"*
+        # Remove any incomplete local files
+        rm -f "$tar_file" "$compressed_file" "${tar_file}.tmp" ".tmp-${tar_file}"*
         
-        print_status "Exporting $image -> $tar_file"
-        
-        if docker save "$image" -o "$tar_file"; then
-            print_status "✓ Exported $image ($(du -sh "$tar_file" | cut -f1))"
-        else
+        # Export Docker image
+        print_status "  Exporting $image -> $tar_file"
+        if ! docker save "$image" -o "$tar_file"; then
             print_error "✗ Failed to export $image"
-            # Clean up failed export
-            rm -f "$tar_file" "${tar_file}.tmp" ".tmp-${tar_file}"*
             exit 1
         fi
+        
+        local tar_size=$(du -sh "$tar_file" | cut -f1)
+        print_status "  ✓ Exported ($tar_size)"
+        
+        # Compress the tar file
+        print_status "  Compressing $tar_file -> $compressed_file"
+        if gzip "$tar_file"; then
+            local compressed_size=$(du -sh "$compressed_file" | cut -f1)
+            print_status "  ✓ Compressed ($compressed_size)"
+        else
+            print_error "✗ Failed to compress $tar_file"
+            exit 1
+        fi
+        
+        # Upload to GCS
+        print_status "  Uploading $compressed_file to GCS..."
+        if gsutil -m cp "$compressed_file" "$GCP_BUCKET/"; then
+            print_status "  ✓ Uploaded $compressed_file"
+            
+            # Set metadata
+            gsutil setmeta \
+                -h "x-goog-meta-image:$image" \
+                -h "x-goog-meta-version:$PACKAGE_VERSION" \
+                -h "x-goog-meta-created:$(date -Iseconds)" \
+                "$GCP_BUCKET/$compressed_file"
+            
+            # Clean up local files after successful upload
+            rm -f "$compressed_file"
+        else
+            print_error "✗ Failed to upload $compressed_file"
+            exit 1
+        fi
+        
+        print_status "✓ $image completed"
+        echo ""
     done
     
     # Create image manifest
@@ -266,7 +298,6 @@ export_docker_images() {
 | Frontend | rag-frontend:latest | rag-frontend_latest.tar | Vue.js web interface |
 | API | rag-api:optimized | rag-api_optimized.tar | FastAPI backend with HiRAG (optimized: ~1.6GB) |
 | LLM GPT-OSS | rag-llm-gptoss:latest | rag-llm-gptoss_latest.tar | Large language model (20B params) |
-| LLM Small | rag-llm-small:latest | rag-llm-small_latest.tar | Small language model (4B params) |
 | Embedding | rag-embedding-server:tgi-optimized | rag-embedding-server_tgi-optimized.tar | Text embedding service (TGI: ~17GB) |
 | DotsOCR | rag-dots-ocr:optimized | rag-dots-ocr_optimized.tar | Vision-language OCR (optimized) |
 | Whisper | rag-whisper:latest | rag-whisper_latest.tar | Hebrew transcription |
@@ -458,7 +489,6 @@ See \`docs/\` directory for complete documentation:
 |---------|---------|--------|------|
 | RAG API | FastAPI backend with HiRAG | ~2GB | 8080 |
 | LLM GPT-OSS | Large language model (20B) | ~16GB | 8003 |
-| LLM Small | Small language model (4B) | ~8GB | 8003 |
 | Embedding | Text embedding service | ~3GB | 8001 |
 | DotsOCR | Vision-language OCR | ~7GB | 8002 |
 | Whisper | Hebrew transcription | ~4GB | 8004 |
@@ -634,13 +664,9 @@ EOF
     fi
     
     create_package_structure
-    export_docker_images
+    export_and_upload_images
     copy_deployment_scripts
     copy_documentation
-    create_compressed_package
-    upload_to_gcp
-    cleanup
-    show_summary
     
     print_status "🎉 All done! Deployment package created and uploaded successfully."
 }
