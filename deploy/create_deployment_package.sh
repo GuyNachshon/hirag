@@ -505,6 +505,42 @@ EOF
     print_status "✓ Documentation copied and package README created"
 }
 
+# Function to upload deployment package (scripts and docs)
+upload_deployment_package() {
+    print_step "Creating and uploading deployment package..."
+    
+    # Create compressed package of scripts and docs (no images)
+    local package_file="${PACKAGE_DIR}_scripts_and_docs.tar.gz"
+    
+    print_status "Compressing scripts and documentation..."
+    tar -czf "$package_file" "$PACKAGE_DIR/scripts" "$PACKAGE_DIR/docs" "$PACKAGE_DIR/config" "$PACKAGE_DIR/README.md" 2>/dev/null || \
+    tar -czf "$package_file" --exclude="$PACKAGE_DIR/images" "$PACKAGE_DIR"
+    
+    local package_size=$(du -sh "$package_file" | cut -f1)
+    print_status "✓ Package created: $package_file ($package_size)"
+    
+    # Upload to GCS
+    print_status "Uploading deployment package to GCS..."
+    if gsutil -m cp "$package_file" "$GCP_BUCKET/"; then
+        print_status "✓ Uploaded deployment package"
+        
+        # Set metadata
+        gsutil setmeta \
+            -h "x-goog-meta-package:deployment-scripts" \
+            -h "x-goog-meta-version:$PACKAGE_VERSION" \
+            -h "x-goog-meta-created:$(date -Iseconds)" \
+            "$GCP_BUCKET/$package_file"
+        
+        # Clean up
+        rm -f "$package_file"
+    else
+        print_error "✗ Failed to upload deployment package"
+        exit 1
+    fi
+    
+    echo ""
+}
+
 # Function to create compressed package
 create_compressed_package() {
     print_step "Creating compressed deployment package..."
@@ -667,8 +703,9 @@ EOF
     export_and_upload_images
     copy_deployment_scripts
     copy_documentation
+    upload_deployment_package
     
-    print_status "🎉 All done! Deployment package created and uploaded successfully."
+    print_status "🎉 All done! Docker images and deployment package uploaded successfully."
 }
 
 # Run main function with all arguments
