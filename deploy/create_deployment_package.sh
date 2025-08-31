@@ -181,12 +181,26 @@ export_docker_images() {
     
     for image in "${images[@]}"; do
         local safe_name=$(echo "$image" | sed 's/:/_/g' | sed 's/\//_/g')
-        print_status "Exporting $image -> ${safe_name}.tar"
+        local tar_file="${safe_name}.tar"
         
-        if docker save "$image" -o "${safe_name}.tar"; then
-            print_status "✓ Exported $image"
+        # Check if image was already exported
+        if [[ -f "$tar_file" && -s "$tar_file" ]]; then
+            local file_size=$(du -sh "$tar_file" | cut -f1)
+            print_status "✓ $image already exported (${tar_file}, ${file_size})"
+            continue
+        fi
+        
+        # Remove incomplete files
+        rm -f "$tar_file" "${tar_file}.tmp" ".tmp-${tar_file}"*
+        
+        print_status "Exporting $image -> $tar_file"
+        
+        if docker save "$image" -o "$tar_file"; then
+            print_status "✓ Exported $image ($(du -sh "$tar_file" | cut -f1))"
         else
             print_error "✗ Failed to export $image"
+            # Clean up failed export
+            rm -f "$tar_file" "${tar_file}.tmp" ".tmp-${tar_file}"*
             exit 1
         fi
     done
