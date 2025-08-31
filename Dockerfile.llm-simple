@@ -1,0 +1,26 @@
+# Simple gpt-oss LLM Server - Build with internet, run offline
+FROM vllm/vllm-openai:latest
+
+# Install the gpt-oss version of vLLM
+RUN pip install --pre vllm==0.10.1+gptoss \
+    --extra-index-url https://wheels.vllm.ai/gpt-oss/ \
+    --extra-index-url https://download.pytorch.org/whl/nightly/cu128 \
+    --index-strategy unsafe-best-match
+
+# Pre-download the model during build (with internet access)
+# The --max-model-len 1 makes it just download without fully loading
+RUN python3 -c "from huggingface_hub import snapshot_download; snapshot_download('openai/gpt-oss-20b', cache_dir='/root/.cache/huggingface/hub')" && \
+    pip cache purge
+
+# Set default model
+ENV MODEL_NAME="openai/gpt-oss-20b"
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# At runtime (offline), model is already cached
+CMD ["sh", "-c", "vllm serve $MODEL_NAME --host 0.0.0.0 --port 8000 --trust-remote-code"]

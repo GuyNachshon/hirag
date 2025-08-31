@@ -218,7 +218,7 @@ export_docker_images() {
         "rag-api:optimized"
         "rag-llm-gptoss:latest"
         "rag-llm-small:latest"
-        "rag-embedding-server:optimized"
+        "rag-embedding-server:tgi-optimized"
         "rag-dots-ocr:optimized"
         "rag-whisper:latest"
     )
@@ -267,7 +267,7 @@ export_docker_images() {
 | API | rag-api:optimized | rag-api_optimized.tar | FastAPI backend with HiRAG (optimized: ~1.6GB) |
 | LLM GPT-OSS | rag-llm-gptoss:latest | rag-llm-gptoss_latest.tar | Large language model (20B params) |
 | LLM Small | rag-llm-small:latest | rag-llm-small_latest.tar | Small language model (4B params) |
-| Embedding | rag-embedding-server:optimized | rag-embedding-server_optimized.tar | Text embedding service (optimized) |
+| Embedding | rag-embedding-server:tgi-optimized | rag-embedding-server_tgi-optimized.tar | Text embedding service (TGI: ~17GB) |
 | DotsOCR | rag-dots-ocr:optimized | rag-dots-ocr_optimized.tar | Vision-language OCR (optimized) |
 | Whisper | rag-whisper:latest | rag-whisper_latest.tar | Hebrew transcription |
 
