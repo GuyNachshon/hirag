@@ -1,0 +1,64 @@
+# Multi-stage build for DotsOCR Vision Server - Ultra Optimized
+# Stage 1: Model and dependencies download
+FROM python:3.10-slim as downloader
+
+# Install minimal requirements
+RUN pip install --no-cache-dir huggingface-hub requests
+
+# Download model weights
+RUN python3 -c "\
+from huggingface_hub import snapshot_download; \
+import os; \
+model_dir = '/models/DotsOCR'; \
+os.makedirs(model_dir, exist_ok=True); \
+snapshot_download(\
+    repo_id='rednote-hilab/dots.ocr', \
+    local_dir=model_dir, \
+    local_dir_use_symlinks=False, \
+    resume_download=True\
+); \
+print(f'Model downloaded to {model_dir}')"
+
+# Stage 2: Runtime with vLLM base
+FROM vllm/vllm-openai:v0.9.1 as runtime
+
+WORKDIR /workspace
+
+# Copy model files from stage 1
+COPY --from=downloader /models /workspace/weights
+
+# Set environment variables
+ENV PYTHONPATH="/workspace/weights:$PYTHONPATH"
+ENV CUDA_VISIBLE_DEVICES=0
+
+# Install required dependencies and create startup script in single layer
+RUN set -e && \
+    # Install required dependencies \
+    pip3 install --no-cache-dir flash_attn==2.8.0.post2 transformers==4.51.3 && \
+    # Create optimized startup script \
+    printf '#!/bin/bash\nset -ex\necho "--- Starting DotsOCR server ---"\necho "Modifying vllm entrypoint..."\nsed -i "/^from vllm\\.entrypoints\\.cli\\.main import main/a from DotsOCR import modeling_dots_ocr_vllm" $(which vllm)\necho "vllm script patched successfully"\necho "Starting server..."\nexec vllm serve /workspace/weights/DotsOCR \\\n    --tensor-parallel-size 1 \\\n    --gpu-memory-utilization 0.95 \\\n    --chat-template-content-format string \\\n    --served-model-name model \\\n    --trust-remote-code \\\n    --host 0.0.0.0 \\\n    --port 8000\n' > /workspace/start_dots_ocr.sh && \
+    chmod +x /workspace/start_dots_ocr.sh && \
+    # Aggressive cleanup \
+    pip3 cache purge && \
+    apt-get autoremove -y && \
+    apt-get autoclean && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /tmp/* && \
+    rm -rf /var/cache/* && \
+    rm -rf /root/.cache/pip && \
+    rm -rf /usr/share/doc/* && \
+    rm -rf /usr/share/man/* && \
+    find /workspace/weights -name "*.tmp*" -delete 2>/dev/null || true && \
+    find /workspace/weights -name "*.lock" -delete 2>/dev/null || true && \
+    find /workspace/weights -name ".gitattributes" -delete 2>/dev/null || true
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Override the vLLM entrypoint
+ENTRYPOINT []
+CMD ["/workspace/start_dots_ocr.sh"]

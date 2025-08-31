@@ -1,0 +1,17 @@
+# TGI-based Embedding Server - Ultra Optimized
+FROM ghcr.io/huggingface/text-generation-inference:latest
+
+# Set environment variables
+ENV MODEL_ID="Qwen/Qwen3-Embedding-4B"
+ENV PORT=8000
+ENV HOSTNAME="0.0.0.0"
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+# Start TGI server
+CMD ["sh", "-c", "text-generation-launcher --model-id $MODEL_ID --hostname $HOSTNAME --port $PORT"]
