@@ -1,0 +1,54 @@
+# Multi-stage build for Embedding Server - Ultra Optimized
+# Stage 1: Model download
+FROM python:3.10-slim as model-downloader
+
+RUN pip install --no-cache-dir huggingface-hub requests
+
+ARG EMBEDDING_MODEL="Qwen/Qwen2-0.5B-Instruct"
+RUN python3 -c "\
+import os; \
+from huggingface_hub import snapshot_download; \
+model_name = '${EMBEDDING_MODEL}'; \
+print(f'Pre-downloading embedding model: {model_name}'); \
+snapshot_download(repo_id=model_name, cache_dir='/models', local_files_only=False, resume_download=True); \
+print(f'Embedding model {model_name} downloaded successfully')"
+
+# Stage 2: Runtime
+FROM vllm/vllm-openai:latest as runtime
+
+WORKDIR /app
+
+# Copy model files
+COPY --from=model-downloader /models /root/.cache/huggingface/hub
+
+# Set environment variables
+ENV CUDA_VISIBLE_DEVICES=0
+ENV VLLM_WORKER_MULTIPROC_METHOD=spawn
+ENV MODEL_NAME=${EMBEDDING_MODEL:-"Qwen/Qwen2-0.5B-Instruct"}
+
+# Create startup script and cleanup
+RUN set -e && \
+    printf '#!/bin/bash\nset -e\nMODEL=${MODEL_NAME:-"Qwen/Qwen2-0.5B-Instruct"}\n\necho "Starting Embedding server with model: $MODEL"\necho "Model is pre-cached for offline deployment"\n\nexec vllm serve "$MODEL" --host 0.0.0.0 --port 8000 --trust-remote-code\n' > /app/start_embedding.sh && \
+    chmod +x /app/start_embedding.sh && \
+    # Aggressive cleanup \
+    pip cache purge && \
+    apt-get autoremove -y && \
+    apt-get autoclean && \
+    rm -rf /var/lib/apt/lists/* && \
+    rm -rf /tmp/* && \
+    rm -rf /var/cache/* && \
+    rm -rf /root/.cache/pip && \
+    rm -rf /usr/share/doc/* && \
+    rm -rf /usr/share/man/* && \
+    find /root/.cache/huggingface -name "*.tmp*" -delete 2>/dev/null || true && \
+    find /root/.cache/huggingface -name "*.lock" -delete 2>/dev/null || true && \
+    find /root/.cache/huggingface -name ".gitattributes" -delete 2>/dev/null || true
+
+# Expose port
+EXPOSE 8000
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
+    CMD curl -f http://localhost:8000/health || exit 1
+
+CMD ["/app/start_embedding.sh"]
