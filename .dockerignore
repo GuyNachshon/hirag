@@ -1,0 +1,48 @@
+# Exclude large directories from Docker build context
+frontend/node_modules/
+frontend/dist/
+frontend/.nuxt/
+frontend/.output/
+
+# Exclude deployment and test files
+deploy/
+scripts/
+*.tar.gz
+*.tar
+.git/
+.github/
+.vscode/
+
+# Exclude temporary and cache files
+**/__pycache__/
+**/.pytest_cache/
+**/*.pyc
+**/*.pyo
+**/*.pyd
+**/.coverage
+**/.tox/
+**/venv/
+**/env/
+
+# Exclude documentation and README files except main
+*.md
+!README.md
+
+# Exclude logs and temporary files
+**/*.log
+**/logs/
+**/tmp/
+**/temp/
+
+# Exclude model caches (should be in individual services)
+**/.cache/
+**/models/
+**/checkpoints/
+
+# Exclude OS files
+.DS_Store
+Thumbs.db
+
+# For API specifically - only include what's needed
+# Include: api/, HiRAG/, requirements.txt, Dockerfile
+# Exclude everything else
