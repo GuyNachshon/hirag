@@ -143,11 +143,57 @@ build_all_images() {
     echo ""
 }
 
+# Function to find existing incomplete package
+find_incomplete_package() {
+    local pattern="${PACKAGE_NAME}_${PACKAGE_VERSION}_*"
+    local existing_dirs=($(ls -d $pattern 2>/dev/null | head -1))
+    
+    if [[ ${#existing_dirs[@]} -gt 0 ]]; then
+        local existing_dir="${existing_dirs[0]}"
+        if [[ -d "$existing_dir" && -d "$existing_dir/images" ]]; then
+            # Check if package is incomplete (no final tar.gz)
+            if [[ ! -f "${existing_dir}.tar.gz" ]]; then
+                echo "$existing_dir"
+                return 0
+            fi
+        fi
+    fi
+    
+    echo ""
+    return 1
+}
+
 # Function to create deployment package directory structure
 create_package_structure() {
     print_step "Creating deployment package structure..."
     
-    # Clean up any existing package
+    # Check for existing incomplete package
+    local incomplete_package=$(find_incomplete_package)
+    
+    if [[ -n "$incomplete_package" ]]; then
+        print_warning "Found incomplete package: $incomplete_package"
+        echo -n "Resume existing package? [y/N]: "
+        read -r response
+        
+        if [[ "$response" =~ ^[Yy]$ ]]; then
+            PACKAGE_DIR="$incomplete_package"
+            print_status "✓ Resuming existing package: $PACKAGE_DIR"
+            
+            # Ensure all subdirectories exist
+            mkdir -p "$PACKAGE_DIR/images"
+            mkdir -p "$PACKAGE_DIR/docs"
+            mkdir -p "$PACKAGE_DIR/scripts" 
+            mkdir -p "$PACKAGE_DIR/config"
+            
+            return 0
+        else
+            print_status "Creating new package..."
+            # Clean up existing incomplete package
+            rm -rf "$incomplete_package"
+        fi
+    fi
+    
+    # Clean up any existing package with same name
     rm -rf "$PACKAGE_DIR"
     rm -f "${PACKAGE_DIR}.tar.gz"
     
