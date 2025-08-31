@@ -237,14 +237,29 @@ export_and_upload_images() {
             continue
         fi
         
-        # Remove any incomplete local files
-        rm -f "$tar_file" "$compressed_file" "${tar_file}.tmp" ".tmp-${tar_file}"*
+        # Check if we can reuse existing export
+        local existing_export=""
+        for existing_dir in ../rag-system-deployment_v1.0.0_*/images/; do
+            if [[ -f "${existing_dir}${tar_file}" && -s "${existing_dir}${tar_file}" ]]; then
+                existing_export="${existing_dir}${tar_file}"
+                break
+            fi
+        done
         
-        # Export Docker image
-        print_status "  Exporting $image -> $tar_file"
-        if ! docker save "$image" -o "$tar_file"; then
-            print_error "✗ Failed to export $image"
-            exit 1
+        if [[ -n "$existing_export" ]]; then
+            local existing_size=$(du -sh "$existing_export" | cut -f1)
+            print_status "  ♻️ Reusing existing export: $existing_export ($existing_size)"
+            cp "$existing_export" "$tar_file"
+        else
+            # Remove any incomplete local files
+            rm -f "$tar_file" "$compressed_file" "${tar_file}.tmp" ".tmp-${tar_file}"*
+            
+            # Export Docker image
+            print_status "  Exporting $image -> $tar_file"
+            if ! docker save "$image" -o "$tar_file"; then
+                print_error "✗ Failed to export $image"
+                exit 1
+            fi
         fi
         
         local tar_size=$(du -sh "$tar_file" | cut -f1)
