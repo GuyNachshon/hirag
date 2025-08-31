@@ -4,8 +4,7 @@ FROM vllm/vllm-openai:latest
 # Install the gpt-oss version of vLLM
 RUN pip install --pre vllm==0.10.1+gptoss \
     --extra-index-url https://wheels.vllm.ai/gpt-oss/ \
-    --extra-index-url https://download.pytorch.org/whl/nightly/cu128 \
-    --index-strategy unsafe-best-match
+    --extra-index-url https://download.pytorch.org/whl/nightly/cu128
 
 # Pre-download the model during build (with internet access)
 # The --max-model-len 1 makes it just download without fully loading
