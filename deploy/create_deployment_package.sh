@@ -218,7 +218,7 @@ export_and_upload_images() {
         "rag-api:optimized"
         "rag-llm-gptoss:latest"
         "rag-embedding-server:tgi-optimized"
-        "rag-dots-ocr:optimized"
+        "rag-dots-ocr:latest"
         "rag-whisper:latest"
     )
     
