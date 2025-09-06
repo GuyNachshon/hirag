@@ -6,6 +6,9 @@ frontend/.output/
 
 # Exclude deployment and test files
 deploy/
+!deploy/whisper_service.py
+!deploy/start_whisper.sh
+!deploy/Dockerfile.*
 scripts/
 *.tar.gz
 *.tar
