@@ -3,6 +3,7 @@ import tempfile
 import logging
 import torch
 from pathlib import Path
+from contextlib import asynccontextmanager
 from fastapi import FastAPI, File, UploadFile, HTTPException
 from fastapi.responses import JSONResponse
 from transformers import AutoProcessor, AutoModelForSpeechSeq2Seq
@@ -13,16 +14,14 @@ import uvicorn
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-# Initialize FastAPI app
-app = FastAPI(title="Whisper Transcription Service", version="1.0.0")
-
 # Global model variables
 model = None
 processor = None
 MODEL_NAME = os.environ.get('MODEL_NAME', 'ivrit-ai/whisper-large-v3')
 
-@app.on_event("startup")
-async def load_model():
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    # Startup
     global model, processor
     logger.info(f"Loading Whisper model: {MODEL_NAME}")
     try:
@@ -38,13 +37,25 @@ async def load_model():
             MODEL_NAME,
             torch_dtype=torch.float16 if device == "cuda" else torch.float32,
             low_cpu_mem_usage=True,
-            use_safetensors=True
-        ).to(device)
+            use_safetensors=True,
+            device_map="auto" if device == "cuda" else None
+        )
+        
+        if device == "cuda" and not hasattr(model, 'hf_device_map'):
+            model = model.to(device)
         
         logger.info(f"Whisper model loaded successfully on {device}")
     except Exception as e:
         logger.error(f"Failed to load model: {e}")
         raise e
+    
+    yield
+    
+    # Shutdown
+    logger.info("Shutting down Whisper service")
+
+# Initialize FastAPI app with lifespan
+app = FastAPI(title="Whisper Transcription Service", version="1.0.0", lifespan=lifespan)
 
 @app.get("/health")
 async def health_check():

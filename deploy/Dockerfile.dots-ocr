@@ -36,7 +36,7 @@ RUN set -e && \
     # Install required dependencies \
     pip3 install --no-cache-dir flash_attn==2.8.0.post2 transformers==4.51.3 && \
     # Create optimized startup script \
-    printf '#!/bin/bash\nset -ex\necho "--- Starting DotsOCR server ---"\necho "Modifying vllm entrypoint..."\nsed -i "/^from vllm\\.entrypoints\\.cli\\.main import main/a from DotsOCR import modeling_dots_ocr_vllm" $(which vllm)\necho "vllm script patched successfully"\necho "Starting server..."\nexec vllm serve /workspace/weights/DotsOCR \\\n    --tensor-parallel-size 1 \\\n    --gpu-memory-utilization 0.95 \\\n    --chat-template-content-format string \\\n    --served-model-name model \\\n    --trust-remote-code \\\n    --host 0.0.0.0 \\\n    --port 8000\n' > /workspace/start_dots_ocr.sh && \
+    printf '#!/bin/bash\nset -ex\necho "--- Starting DotsOCR server ---"\necho "Modifying vllm entrypoint..."\nsed -i "/^from vllm\\.entrypoints\\.cli\\.main import main/a from DotsOCR import modeling_dots_ocr_vllm" $(which vllm)\necho "vllm script patched successfully"\necho "Starting server..."\nexec vllm serve /workspace/weights/DotsOCR \\\n    --tensor-parallel-size 1 \\\n    --gpu-memory-utilization 0.4 \\\n    --max-model-len 8192 \\\n    --chat-template-content-format string \\\n    --served-model-name model \\\n    --trust-remote-code \\\n    --host 0.0.0.0 \\\n    --port 8000\n' > /workspace/start_dots_ocr.sh && \
     chmod +x /workspace/start_dots_ocr.sh && \
     # Aggressive cleanup \
     pip3 cache purge && \

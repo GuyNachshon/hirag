@@ -14,4 +14,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # Start TGI server
-CMD ["sh", "-c", "text-generation-launcher --model-id $MODEL_ID --hostname $HOSTNAME --port $PORT"]
+ENTRYPOINT ["text-generation-launcher"]
+CMD ["--model-id", "Qwen/Qwen2-0.5B-Instruct", "--hostname", "0.0.0.0", "--port", "8000"]

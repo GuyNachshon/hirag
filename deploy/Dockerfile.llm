@@ -27,6 +27,9 @@ COPY --from=model-downloader /models /root/.cache/huggingface/hub
 ENV CUDA_VISIBLE_DEVICES=0
 ENV VLLM_WORKER_MULTIPROC_METHOD=spawn
 ENV MODEL_NAME=${GPT_OSS_MODEL:-"openai/gpt-oss-20b"}
+ENV HF_HUB_OFFLINE=1
+ENV TRANSFORMERS_OFFLINE=1
+ENV HF_DATASETS_OFFLINE=1
 
 # Install gpt-oss vLLM version and cleanup in single layer
 RUN set -e && \
