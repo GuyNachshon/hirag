@@ -105,10 +105,10 @@ done
 
 # Service definitions with resource requirements
 declare -A GPU_SERVICES=(
-    ["dotsocr"]="rag-dots-ocr:latest:8002:8000:7:DotsOCR Vision Service"
+    ["dotsocr"]="rag-dots-ocr:latest:8002:8000:16:DotsOCR Vision Service"
     ["embedding"]="rag-embedding-server:latest:8001:8000:3:Embedding Service" 
     ["llm-small"]="rag-llm-small:latest:8003:8000:8:Small LLM Service"
-    ["llm-gptoss"]="rag-llm-gptoss:latest:8003:8000:16:GPT-OSS LLM Service"
+    ["llm-gptoss"]="rag-llm-gptoss:latest:8003:8000:20:GPT-OSS LLM Service"
     ["whisper"]="rag-whisper:latest:8004:8004:4:Whisper Transcription Service"
 )
 
