@@ -121,9 +121,8 @@ deploy_embedding_service() {
         --restart unless-stopped \
         -p 8001:8000 \
         -e CUDA_VISIBLE_DEVICES=0 \
-        -e MODEL_ID=Qwen/Qwen3-Embedding-4B \
-        -e TENSOR_PARALLEL_SIZE=1 \
-        -e GPU_MEMORY_UTILIZATION=0.1 \
+        -e MODEL_NAME="Qwen/Qwen2-0.5B-Instruct" \
+        --entrypoint /app/start_embedding.sh \
         rag-embedding-server:latest
     
     print_status "✓ Embedding Service deployed (4GB reserved)"
@@ -203,7 +202,7 @@ deploy_llm_service() {
             echo '--- LLM A100 Single GPU Mode ---'
             echo 'GPU memory allocation: 13GB of 40GB total'
             echo 'Using memory-optimized settings for single GPU'
-            exec vllm serve /workspace/weights/openai/gpt-oss-20b \
+            exec vllm serve openai/gpt-oss-20b \
                 --tensor-parallel-size 1 \
                 --gpu-memory-utilization 0.35 \
                 --max-model-len 2048 \
