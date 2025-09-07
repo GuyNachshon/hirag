@@ -41,6 +41,7 @@ COPY --from=builder /lib/x86_64-linux-gnu/libcrypto.so.3 /lib/x86_64-linux-gnu/l
 # Copy only necessary application files
 COPY api/ api/
 COPY file_parser/ file_parser/
+COPY HiRAG/ HiRAG/
 COPY requirements.txt .
 
 # Create necessary directories
