@@ -9,6 +9,8 @@ deploy/
 !deploy/whisper_service.py
 !deploy/start_whisper.sh
 !deploy/Dockerfile.*
+# Allow file_parser for API image
+!file_parser/
 scripts/
 *.tar.gz
 *.tar
