@@ -23,9 +23,8 @@ if [ ! -d "/root/.cache/huggingface/hub/models--$(echo $MODEL_NAME | sed 's/\//-
     python /app/download_models.py
 fi
 
-# Start vLLM server (using older API format for v0.2.7)
-exec python -m vllm.entrypoints.api_server \
-    --model $MODEL_NAME \
+# Start vLLM server (modern format for v0.10.1+)
+exec vllm serve $MODEL_NAME \
     --host 0.0.0.0 \
     --port $PORT \
     --tensor-parallel-size $TENSOR_PARALLEL_SIZE \
