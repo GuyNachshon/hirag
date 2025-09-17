@@ -13,10 +13,10 @@ RUN apt-get update && apt-get install -y \
 
 WORKDIR /app
 
-# Install vLLM and dependencies (pinned versions for stability)
+# Install vLLM and dependencies (updated for gpt-oss support)
 RUN pip install --no-cache-dir \
-    vllm==0.2.7 \
-    transformers==4.36.0 \
+    vllm==0.10.1 \
+    transformers \
     accelerate \
     safetensors \
     fastapi \
