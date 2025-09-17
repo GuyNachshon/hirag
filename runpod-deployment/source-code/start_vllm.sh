@@ -2,7 +2,7 @@
 
 # Configuration
 MODEL_TYPE=${MODEL_TYPE:-"llm"}
-MODEL_NAME=${MODEL_NAME:-"Qwen/Qwen2-0.5B-Instruct"}
+MODEL_NAME=${MODEL_NAME:-"BAAI/bge-small-en-v1.5"}
 PORT=${PORT:-8000}
 TENSOR_PARALLEL_SIZE=${TENSOR_PARALLEL_SIZE:-1}
 GPU_MEMORY_UTILIZATION=${GPU_MEMORY_UTILIZATION:-0.7}
@@ -23,13 +23,12 @@ if [ ! -d "/root/.cache/huggingface/hub/models--$(echo $MODEL_NAME | sed 's/\//-
     python /app/download_models.py
 fi
 
-# Start vLLM server
-exec vllm serve $MODEL_NAME \
+# Start vLLM server (using older API format for v0.2.7)
+exec python -m vllm.entrypoints.api_server \
+    --model $MODEL_NAME \
     --host 0.0.0.0 \
     --port $PORT \
     --tensor-parallel-size $TENSOR_PARALLEL_SIZE \
     --gpu-memory-utilization $GPU_MEMORY_UTILIZATION \
     --max-model-len $MAX_MODEL_LEN \
-    --trust-remote-code \
-    --enforce-eager \
-    --disable-custom-all-reduce
+    --trust-remote-code
