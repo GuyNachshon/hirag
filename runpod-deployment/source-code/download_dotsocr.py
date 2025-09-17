@@ -17,13 +17,12 @@ def download_dotsocr_model():
         # Create weights directory
         os.makedirs(weights_dir, exist_ok=True)
 
-        # Download model with trust_remote_code for DotsOCR
+        # Download model files for DotsOCR
         print("Downloading model files...")
         snapshot_download(
             model_name,
             cache_dir="/root/.cache/huggingface",
-            local_dir=weights_dir,
-            trust_remote_code=True
+            local_dir=weights_dir
         )
 
         print(f"✓ DotsOCR model downloaded to {weights_dir}")
