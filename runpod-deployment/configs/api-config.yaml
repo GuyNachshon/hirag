@@ -24,7 +24,7 @@ dots_ocr:
 
 # HiRAG Configuration
 hirag:
-  working_dir: "your_work_dir"
+  working_dir: "/app/hirag_data"
   enable_llm_cache: false
   enable_hierarchical_mode: true
   embedding_batch_num: 6
