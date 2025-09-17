@@ -1,0 +1,170 @@
+# GPU Distribution Configuration for 8x A100 SXM Cluster
+# Total: 640GB VRAM across 8 GPUs (80GB each)
+
+cluster:
+  name: "runpod-8xa100"
+  total_gpus: 8
+  gpu_type: "A100-SXM-80GB"
+  total_vram: "640GB"
+  interconnect: "NVLink"
+
+gpu_allocation:
+  # GPU 0: Whisper Service
+  - gpu_id: 0
+    service: "whisper"
+    container: "rag-whisper"
+    memory_limit: "20GB"
+    utilization: 0.25
+    notes: "Hebrew transcription, Ivrit-AI optimized"
+
+  # GPU 1: Embedding Service
+  - gpu_id: 1
+    service: "embedding"
+    container: "rag-embedding-server"
+    memory_limit: "16GB"
+    utilization: 0.20
+    notes: "BAAI/bge-small-en-v1.5, dedicated vLLM"
+
+  # GPU 2-3: LLM Service (Multi-GPU)
+  - gpu_id: [2, 3]
+    service: "llm"
+    container: "rag-llm-server"
+    memory_limit: "120GB"  # 60GB per GPU
+    utilization: 0.75
+    tensor_parallel: 2
+    notes: "Qwen2 or GPT-OSS, multi-GPU inference"
+
+  # GPU 4: DotsOCR Service
+  - gpu_id: 4
+    service: "ocr"
+    container: "rag-dots-ocr"
+    memory_limit: "30GB"
+    utilization: 0.40
+    notes: "Vision language model for OCR"
+
+  # GPU 5: Reserved for Scaling
+  - gpu_id: 5
+    service: "reserved"
+    container: null
+    memory_limit: "80GB"
+    utilization: 0
+    notes: "Available for scaling any service"
+
+  # GPU 6-7: Development/Testing
+  - gpu_id: [6, 7]
+    service: "development"
+    container: null
+    memory_limit: "160GB"
+    utilization: 0
+    notes: "Testing new models, experiments"
+
+# Service Configuration
+services:
+  whisper:
+    image: "rag-whisper:latest"
+    port: 8004
+    health_endpoint: "/health"
+    environment:
+      CUDA_VISIBLE_DEVICES: "0"
+      MODEL_NAME: "ivrit-ai/whisper-large-v3"
+      DEVICE: "cuda"
+      HF_HUB_OFFLINE: "1"
+
+  embedding:
+    image: "rag-llm-gptoss:latest"
+    port: 8001
+    health_endpoint: "/health"
+    vllm_config:
+      model: "BAAI/bge-small-en-v1.5"
+      tensor_parallel_size: 1
+      gpu_memory_utilization: 0.2
+      max_model_len: 512
+      enforce_eager: true
+
+  llm:
+    image: "rag-llm-gptoss:latest"
+    port: 8003
+    health_endpoint: "/health"
+    vllm_config:
+      model: "Qwen/Qwen2-0.5B-Instruct"
+      tensor_parallel_size: 2
+      gpu_memory_utilization: 0.75
+      max_model_len: 4096
+      enforce_eager: true
+
+  ocr:
+    image: "rag-dots-ocr:latest"
+    port: 8002
+    health_endpoint: "/health"
+    environment:
+      CUDA_VISIBLE_DEVICES: "0"
+      HF_HUB_OFFLINE: "1"
+
+  frontend:
+    image: "rag-frontend-complete:latest"
+    port: 8087
+    health_endpoint: "/frontend-health"
+    gpu_required: false
+
+  langflow:
+    image: "rag-langflow:latest"
+    port: 7860
+    health_endpoint: "/health"
+    gpu_required: false
+
+  api:
+    image: "rag-api:latest"
+    port: 8080
+    health_endpoint: "/health"
+    gpu_required: false
+
+# Monitoring Configuration
+monitoring:
+  prometheus_gpu_exporter:
+    enabled: true
+    port: 9400
+    scrape_interval: 15s
+
+  health_checks:
+    interval: 30s
+    timeout: 10s
+    retries: 3
+
+  alerts:
+    gpu_memory_threshold: 90  # Alert if GPU memory > 90%
+    gpu_util_threshold: 95    # Alert if GPU utilization > 95%
+    service_down_threshold: 2 # Alert if service down for 2 checks
+
+# Optimization Settings
+optimizations:
+  # Memory settings
+  pytorch:
+    cuda_malloc_backend: "native"  # or "cudaMallocAsync"
+    empty_cache_interval: 300       # seconds
+
+  # vLLM settings
+  vllm:
+    enable_prefix_caching: true
+    enable_chunked_prefill: false
+    disable_custom_all_reduce: true
+    use_triton: false
+
+  # Network settings
+  nccl:
+    P2P_DISABLE: "0"
+    IB_DISABLE: "0"
+    SOCKET_IFNAME: "eth0"
+
+# Scaling Rules
+scaling:
+  auto_scale_enabled: false  # Manual scaling for offline env
+
+  manual_scaling:
+    # If embedding needs more resources
+    embedding_overflow_gpu: 5
+
+    # If LLM needs more resources
+    llm_overflow_gpus: [5, 6, 7]
+
+    # If Whisper needs more resources
+    whisper_overflow_gpu: 7

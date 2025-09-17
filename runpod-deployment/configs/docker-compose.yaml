@@ -1,0 +1,228 @@
+version: '3.8'
+
+services:
+  # Whisper Service (GPU 0) - Using Ivrit-AI official base
+  rag-whisper:
+    image: rag-whisper-official:latest
+    container_name: rag-whisper
+    ports:
+      - "8004:8004"
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+      - DEVICE=cuda
+      - MODEL_NAME=ivrit-ai/whisper-large-v3-ct2
+      - MODEL_CACHE_DIR=/root/.cache/huggingface
+    volumes:
+      - model-cache:/root/.cache/huggingface
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['0']
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8004/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Embedding Service (GPU 1)
+  rag-embedding-server:
+    image: rag-llm-gptoss:latest
+    container_name: rag-embedding-server
+    ports:
+      - "8001:8000"
+    environment:
+      - CUDA_VISIBLE_DEVICES=1
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+      - VLLM_USE_TRITON=0
+      - MODEL_NAME=Qwen/Qwen3-Embedding-4B
+      - MAX_MODEL_LEN=1024
+      - GPU_MEMORY_UTILIZATION=0.9
+    volumes:
+      - model-cache:/root/.cache/huggingface
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['1']
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # LLM Service (GPU 2-3)
+  rag-llm-server:
+    image: rag-llm-gptoss:latest
+    container_name: rag-llm-server
+    ports:
+      - "8003:8000"
+    environment:
+      - CUDA_VISIBLE_DEVICES=2,3
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+      - VLLM_USE_TRITON=0
+      - MODEL_NAME=openai/gpt-oss-20b
+      - MAX_MODEL_LEN=4096
+      - TENSOR_PARALLEL_SIZE=2
+      - GPU_MEMORY_UTILIZATION=0.9
+    volumes:
+      - model-cache:/root/.cache/huggingface
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['2', '3']
+              capabilities: [gpu]
+    shm_size: 32g
+    restart: unless-stopped
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # OCR Service (GPU 4) - Using DotsOCR official base
+  rag-dots-ocr:
+    image: rag-dots-ocr-official:latest
+    container_name: rag-dots-ocr
+    ports:
+      - "8002:8002"
+      - "8005:8000"  # vLLM service port
+    environment:
+      - CUDA_VISIBLE_DEVICES=4
+      - HF_HUB_OFFLINE=1
+      - TRANSFORMERS_OFFLINE=1
+      - VLLM_USE_TRITON=0
+      - MODEL_NAME=rednote-hilab/dots.ocr
+      - MAX_MODEL_LEN=1024
+      - GPU_MEMORY_UTILIZATION=0.8
+    volumes:
+      - model-cache:/root/.cache/huggingface
+      - ./data:/app/data
+      - ./logs:/app/logs
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              device_ids: ['4']
+              capabilities: [gpu]
+    restart: unless-stopped
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8002/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # API Service (CPU only)
+  rag-api:
+    image: rag-api:latest
+    container_name: rag-api
+    ports:
+      - "8080:8080"
+    environment:
+      - HIRAG_CONFIG_PATH=/app/configs/hirag-config.yaml
+      - LOG_LEVEL=INFO
+      - PYTHONPATH=/app
+    volumes:
+      - ./configs:/app/configs
+      - ./data:/app/data
+      - ./logs:/app/logs
+      - model-cache:/root/.cache/huggingface
+    depends_on:
+      - rag-llm-server
+      - rag-embedding-server
+      - rag-whisper
+      - rag-dots-ocr
+    restart: unless-stopped
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Service (CPU only)
+  rag-frontend:
+    image: rag-frontend-complete:latest
+    container_name: rag-frontend
+    ports:
+      - "8087:8087"
+    environment:
+      - API_BASE_URL=http://rag-api:8080
+      - LANGFLOW_URL=http://rag-langflow:7860
+    volumes:
+      - ./logs:/var/log/nginx
+    depends_on:
+      - rag-api
+      - rag-langflow
+    restart: unless-stopped
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8087/frontend-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Langflow Service (CPU only)
+  rag-langflow:
+    image: rag-langflow:latest
+    container_name: rag-langflow
+    ports:
+      - "7860:7860"
+    environment:
+      - LANGFLOW_HOST=0.0.0.0
+      - LANGFLOW_PORT=7860
+      - LANGFLOW_WORKERS=1
+    volumes:
+      - ./data/langflow:/app/data
+      - ./logs:/app/logs
+    restart: unless-stopped
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# Networks
+networks:
+  rag-network:
+    driver: bridge
+    ipam:
+      config:
+        - subnet: 172.20.0.0/16
+
+# Volumes
+volumes:
+  model-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MODEL_CACHE_DIR:-./model-cache}

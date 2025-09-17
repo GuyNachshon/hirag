@@ -243,11 +243,19 @@ deploy_api_service() {
 deploy_frontend_service() {
     print_header "Deploying Frontend Service (CPU only)"
     
+    # Check if nginx config exists and mount it
+    NGINX_CONFIG_MOUNT=""
+    if [[ -f "frontend/nginx-frontend.conf" ]]; then
+        NGINX_CONFIG_MOUNT="-v $(pwd)/frontend/nginx-frontend.conf:/etc/nginx/conf.d/default.conf:ro"
+        print_status "Using custom nginx configuration"
+    fi
+    
     docker run -d \
         --name rag-frontend \
         --network rag-network \
         --restart unless-stopped \
         -p 3000:3000 \
+        $NGINX_CONFIG_MOUNT \
         rag-frontend:latest
     
     print_status "✓ Frontend Service deployed (CPU only)"

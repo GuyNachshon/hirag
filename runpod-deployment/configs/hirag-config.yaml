@@ -1,0 +1,180 @@
+# HiRAG Configuration for RunPod Deployment
+# Containerized environment with vLLM services
+
+# Model Configuration
+models:
+  # LLM Model (served by rag-llm-server container)
+  llm:
+    provider: "openai"  # Use OpenAI-compatible API
+    model: "openai/gpt-oss-20b"  # 20B model for better performance
+    base_url: "http://rag-llm-server:8000/v1"  # Internal container network
+    api_key: "dummy-key"  # vLLM doesn't require real API key
+    max_tokens: 4096
+    temperature: 0.1
+
+  # Embedding Model (served by rag-embedding-server container)
+  embedding:
+    provider: "openai"  # Use OpenAI-compatible API
+    model: "Qwen/Qwen3-Embedding-4B"  # High-quality embedding model
+    base_url: "http://rag-embedding-server:8000/v1"  # Internal container network
+    api_key: "dummy-key"  # vLLM doesn't require real API key
+    dimensions: 1024
+
+# Storage Configuration
+storage:
+  # Vector Database
+  vector_db:
+    type: "nanovectordb"  # Local vector database
+    persist_directory: "/app/data/vector_store"
+
+  # Graph Database
+  graph_db:
+    type: "networkx"  # Local graph database
+    persist_directory: "/app/data/graph_store"
+
+  # Cache Directory
+  cache_directory: "/app/data/cache"
+
+  # Model Cache (mounted from host)
+  model_cache: "/root/.cache/huggingface"
+
+# Clustering Configuration
+clustering:
+  # Hierarchical clustering for knowledge graph
+  method: "gmm"  # Gaussian Mixture Model
+  max_clusters: 50
+  min_cluster_size: 2
+
+  # UMAP dimension reduction
+  umap:
+    n_components: 10
+    n_neighbors: 15
+    min_dist: 0.1
+    metric: "cosine"
+
+# Entity Extraction Configuration
+entity_extraction:
+  # Maximum context length for entity extraction
+  max_context_length: 4000
+
+  # Entity types to extract
+  entity_types:
+    - "PERSON"
+    - "ORGANIZATION"
+    - "LOCATION"
+    - "EVENT"
+    - "CONCEPT"
+    - "PRODUCT"
+    - "DATE"
+    - "NUMBER"
+
+  # Relationship types
+  relationship_types:
+    - "RELATED_TO"
+    - "PART_OF"
+    - "CAUSED_BY"
+    - "LEADS_TO"
+    - "SIMILAR_TO"
+    - "OPPOSITE_TO"
+
+# Query Configuration
+query:
+  # Maximum number of retrieved chunks
+  max_retrieval_chunks: 20
+
+  # Similarity threshold for retrieval
+  similarity_threshold: 0.7
+
+  # Query modes available
+  modes:
+    - "hierarchical"  # Full HiRAG with all layers
+    - "naive"         # Simple RAG without hierarchy
+    - "hi_local"      # Local knowledge only
+    - "hi_global"     # Global knowledge only
+    - "hi_bridge"     # Bridge knowledge only
+    - "hi_nobridge"   # HiRAG without bridge connections
+
+# Processing Configuration
+processing:
+  # Text chunking
+  chunk_size: 1000
+  chunk_overlap: 200
+
+  # Batch processing
+  batch_size: 32
+
+  # Parallel processing
+  max_workers: 4
+
+# Logging Configuration
+logging:
+  level: "INFO"
+  format: "%(asctime)s - %(name)s - %(levelname)s - %(message)s"
+
+  # Log files
+  files:
+    main: "/app/logs/hirag.log"
+    entities: "/app/logs/entities.log"
+    queries: "/app/logs/queries.log"
+    performance: "/app/logs/performance.log"
+
+# Health Check Configuration
+health:
+  # Service health check intervals
+  check_interval: 30  # seconds
+
+  # Timeout for external service calls
+  timeout: 10  # seconds
+
+  # Retry configuration
+  max_retries: 3
+  retry_delay: 1  # seconds
+
+# GPU Configuration (for reference - actual allocation done by Docker)
+gpu:
+  # Device allocation (informational)
+  whisper: "cuda:0"      # GPU 0 - Whisper service
+  embedding: "cuda:1"    # GPU 1 - Embedding service
+  llm: "cuda:2,3"        # GPU 2-3 - LLM service
+  ocr: "cuda:4"          # GPU 4 - OCR service
+
+  # Memory management
+  memory_fraction: 0.9   # Use 90% of available GPU memory
+  allow_growth: true     # Allow dynamic memory allocation
+
+# Offline Configuration
+offline:
+  # Enforce offline mode
+  enabled: true
+
+  # Environment variables for offline operation
+  hf_hub_offline: true
+  transformers_offline: true
+
+  # Local model paths (relative to model_cache)
+  model_paths:
+    llm: "models--openai--gpt-oss-20b"
+    embedding: "models--Qwen--Qwen3-Embedding-4B"
+    whisper: "models--ivrit-ai--whisper-v2_he"
+
+# Network Configuration
+network:
+  # Internal service URLs (Docker network)
+  services:
+    api: "http://rag-api:8080"
+    frontend: "http://rag-frontend:8087"
+    langflow: "http://rag-langflow:7860"
+    llm: "http://rag-llm-server:8000"
+    embedding: "http://rag-embedding-server:8000"
+    whisper: "http://rag-whisper:8004"
+    ocr: "http://rag-dots-ocr:8002"
+
+  # External ports (accessible from host)
+  ports:
+    api: 8080
+    frontend: 8087
+    langflow: 7860
+    llm: 8003
+    embedding: 8001
+    whisper: 8004
+    ocr: 8002

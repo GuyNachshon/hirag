@@ -1,0 +1,162 @@
+# Complete offline RAG system with Langflow integration
+
+version: '3.8'
+
+networks:
+  rag-network:
+    driver: bridge
+
+volumes:
+  model-cache:
+  langflow-data:
+  rag-data:
+
+services:
+  # Langflow service
+  langflow:
+    build: ./langflow
+    container_name: rag-langflow
+    networks:
+      - rag-network
+    ports:
+      - "7860:7860"
+    volumes:
+      - langflow-data:/app/flows
+    environment:
+      - LANGFLOW_HOST=0.0.0.0
+      - LANGFLOW_PORT=7860
+      - LANGFLOW_BACKEND_ONLY=false
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:7860/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
+    restart: unless-stopped
+
+  # API Service
+  rag-api:
+    image: rag-api:latest
+    container_name: rag-api
+    networks:
+      - rag-network
+    ports:
+      - "8080:8080"
+    volumes:
+      - ./config:/app/config:ro
+      - rag-data:/app/data
+    restart: unless-stopped
+    depends_on:
+      - rag-embedding-server
+      - rag-llm-server
+      - rag-whisper
+      - rag-dots-ocr
+
+  # Embedding Service
+  rag-embedding-server:
+    image: rag-embedding-server:latest
+    container_name: rag-embedding-server
+    networks:
+      - rag-network
+    ports:
+      - "8001:8000"
+    volumes:
+      - model-cache:/root/.cache/huggingface
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - HF_HOME=/root/.cache/huggingface
+      - TRANSFORMERS_CACHE=/root/.cache/huggingface
+      - HF_HUB_OFFLINE=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # LLM Service
+  rag-llm-server:
+    image: rag-llm-gptoss:latest
+    container_name: rag-llm-server
+    networks:
+      - rag-network
+    ports:
+      - "8003:8000"
+    volumes:
+      - model-cache:/root/.cache/huggingface
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - TENSOR_PARALLEL_SIZE=1
+      - GPU_MEMORY_UTILIZATION=0.35
+      - HF_HOME=/root/.cache/huggingface
+      - TRANSFORMERS_CACHE=/root/.cache/huggingface
+      - HF_HUB_OFFLINE=1
+    shm_size: 16gb
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # Whisper Service
+  rag-whisper:
+    image: rag-whisper:latest
+    container_name: rag-whisper
+    networks:
+      - rag-network
+    ports:
+      - "8004:8004"
+    volumes:
+      - model-cache:/root/.cache/huggingface
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+      - HF_HOME=/root/.cache/huggingface
+      - TRANSFORMERS_CACHE=/root/.cache/huggingface
+      - HF_HUB_OFFLINE=1
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # DotsOCR Service
+  rag-dots-ocr:
+    image: rag-dots-ocr:latest
+    container_name: rag-dots-ocr
+    networks:
+      - rag-network
+    ports:
+      - "8002:8000"
+    environment:
+      - CUDA_VISIBLE_DEVICES=0
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: all
+              capabilities: [gpu]
+    restart: unless-stopped
+
+  # Frontend with all endpoints
+  rag-frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.complete
+    container_name: rag-frontend
+    networks:
+      - rag-network
+    ports:
+      - "8087:8087"
+    depends_on:
+      - rag-api
+      - langflow
+    restart: unless-stopped

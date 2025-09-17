@@ -1,0 +1,194 @@
+# GPU Distribution Strategy for 8x A100 SXM Cluster (640GB VRAM)
+# Optimized allocation for RAG system components
+
+cluster_specs:
+  gpu_count: 8
+  gpu_model: "A100-SXM-80GB"
+  total_vram: "640GB"
+  memory_per_gpu: "80GB"
+  interconnect: "NVLink"
+
+# Service GPU Allocation
+services:
+  whisper:
+    gpu_allocation: [0]
+    vram_usage: "~15GB"
+    rationale: |
+      Whisper requires moderate GPU memory for audio processing.
+      Using GPU 0 to isolate audio workload from text processing.
+      Ivrit-AI Whisper model optimized for Hebrew transcription.
+
+  embedding:
+    gpu_allocation: [1]
+    vram_usage: "~35GB"
+    rationale: |
+      Embedding service uses Qwen3-Embedding-4B (4B parameters).
+      Higher quality embeddings for better retrieval performance.
+      Dedicated GPU ensures stable embedding performance for HiRAG.
+
+  llm:
+    gpu_allocation: [2, 3]
+    vram_usage: "~150GB"
+    rationale: |
+      GPT-OSS-20B requires substantial memory (20B parameters).
+      Using 2 GPUs with tensor parallelism for optimal performance.
+      Handles HiRAG reasoning, entity extraction, and text generation.
+
+  ocr:
+    gpu_allocation: [4]
+    vram_usage: "~25GB"
+    rationale: |
+      DotsOCR with vision language model for document parsing.
+      Moderate memory requirements for layout analysis and text extraction.
+      Isolated GPU prevents interference with other services.
+
+  # Reserved GPUs for scaling/additional services
+  reserved:
+    gpu_allocation: [5, 6, 7]
+    vram_usage: "~240GB"
+    rationale: |
+      Reserved for additional services or scaling existing ones:
+      - GPU 5: Additional LLM instance for load balancing
+      - GPU 6: Specialized embedding models (multilingual, domain-specific)
+      - GPU 7: Development/testing or backup service instances
+
+# Memory Management Strategy
+memory_management:
+  gpu_memory_utilization: 0.9  # Use 90% of available VRAM
+  allow_growth: true           # Dynamic memory allocation
+  memory_pool: true           # Enable memory pooling for efficiency
+
+  per_service_limits:
+    whisper: "72GB"    # 90% of 80GB
+    embedding: "72GB"  # 90% of 80GB (sufficient for 4B model)
+    llm: "144GB"       # 90% of 160GB (2 GPUs) - tight fit for 20B model
+    ocr: "72GB"        # 90% of 80GB
+
+# Model Loading Strategy
+model_loading:
+  whisper:
+    model: "ivrit-ai/whisper-v2_he"
+    precision: "fp16"
+    optimization: "TensorRT"
+    estimated_size: "3GB"
+
+  embedding:
+    model: "Qwen/Qwen3-Embedding-4B"
+    precision: "fp16"
+    batch_size: 32
+    estimated_size: "8GB"
+
+  llm:
+    model: "openai/gpt-oss-20b"
+    precision: "fp16"
+    tensor_parallel: 2
+    max_tokens: 4096
+    estimated_size: "40GB"
+
+  ocr:
+    model: "rednote-hilab/dots.ocr"
+    precision: "fp16"
+    optimization: "ONNX"
+    estimated_size: "3.5GB"
+
+# Performance Optimization
+optimization:
+  compute_capability: "8.0"  # A100 compute capability
+
+  vllm_settings:
+    use_triton: false         # Disable for compatibility
+    enable_prefix_caching: true
+    max_num_seqs: 256
+    max_model_len: 2048
+
+  memory_optimization:
+    enable_chunked_prefill: true
+    max_num_batched_tokens: 2048
+    gpu_memory_utilization: 0.9
+
+  networking:
+    use_nvlink: true          # Enable NVLink for multi-GPU
+    tcp_store: true           # Distributed tensor operations
+
+# Monitoring and Health Checks
+monitoring:
+  gpu_utilization_target: 80  # Target 80% GPU utilization
+  memory_usage_alert: 85      # Alert at 85% memory usage
+  temperature_limit: 83       # A100 temperature limit (°C)
+
+  health_checks:
+    interval: 30              # Check every 30 seconds
+    timeout: 10               # 10 second timeout
+    retries: 3                # 3 retry attempts
+
+  metrics:
+    - gpu_utilization
+    - memory_usage
+    - temperature
+    - power_consumption
+    - compute_utilization
+
+# Scaling Strategy
+scaling:
+  # Horizontal scaling options
+  load_balancing:
+    llm:
+      - primary: [2, 3]
+      - secondary: [5]        # Scale LLM to GPU 5 if needed
+
+    embedding:
+      - primary: [1]
+      - secondary: [6]        # Scale embedding to GPU 6 if needed
+
+  # Vertical scaling (within service)
+  resource_expansion:
+    whisper:
+      max_gpus: 2             # Can expand to use GPU 5
+      memory_expansion: "160GB"
+
+    ocr:
+      max_gpus: 2             # Can expand to use GPU 7
+      memory_expansion: "160GB"
+
+# Offline Configuration
+offline:
+  model_cache_size: "50GB"    # Total size of cached models
+  preload_models: true        # Preload all models at startup
+  local_model_store: "/workspace/model-cache"
+
+  download_strategy:
+    - Download all models during RunPod setup phase
+    - Verify model integrity with checksums
+    - Test model loading before packaging
+    - Include fallback models for compatibility
+
+# Deployment Phases
+deployment_phases:
+  phase_1_essential:
+    - whisper (GPU 0)
+    - embedding (GPU 1)
+    - llm (GPU 2-3)
+    - api (CPU)
+    - frontend (CPU)
+
+  phase_2_enhanced:
+    - ocr (GPU 4)
+    - langflow (CPU)
+
+  phase_3_scaling:
+    - additional_llm (GPU 5)
+    - multilingual_embedding (GPU 6)
+    - development_instance (GPU 7)
+
+# Resource Requirements Summary
+resource_summary:
+  total_gpu_memory_used: "180GB"  # Out of 640GB available
+  total_gpu_memory_reserved: "240GB"  # For scaling
+  total_gpu_memory_available: "220GB"  # Remaining buffer
+
+  cpu_cores_required: 32
+  system_memory_required: "128GB"
+  storage_required: "500GB"
+
+  network_bandwidth: "10Gbps"
+  interconnect_bandwidth: "600GB/s"  # NVLink between GPUs

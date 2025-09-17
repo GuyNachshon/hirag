@@ -1,0 +1,238 @@
+# DotsOCR Service for document parsing
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    build-essential \
+    curl \
+    git \
+    libgl1-mesa-glx \
+    libglib2.0-0 \
+    libsm6 \
+    libxext6 \
+    libxrender-dev \
+    libgomp1 \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install PyTorch with CUDA support
+RUN pip install --no-cache-dir \
+    torch==2.3.0 \
+    torchvision==0.18.0 \
+    --index-url https://download.pytorch.org/whl/cu121
+
+# Install vision and OCR dependencies
+RUN pip install --no-cache-dir \
+    fastapi==0.104.1 \
+    uvicorn==0.24.0 \
+    transformers>=4.40.0 \
+    accelerate \
+    safetensors \
+    pillow \
+    opencv-python-headless \
+    python-multipart \
+    numpy \
+    requests
+
+# Copy file parser source
+COPY source-code/file_parser/ ./file_parser/
+
+# Environment variables
+ENV PYTHONPATH=/app
+ENV HF_HOME=/root/.cache/huggingface
+ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
+ENV HF_HUB_OFFLINE=1
+ENV TRANSFORMERS_OFFLINE=1
+ENV CUDA_VISIBLE_DEVICES=0
+
+# Download DotsOCR model script
+RUN cat > download_dotsocr.py << 'EOF'
+#!/usr/bin/env python3
+import os
+from transformers import AutoTokenizer, AutoModel
+from huggingface_hub import snapshot_download
+
+def download_dotsocr_model():
+    model_name = "rednote-hilab/dots.ocr"
+    print(f"Downloading DotsOCR model: {model_name} (1.7B parameters)")
+
+    try:
+        # Temporarily disable offline mode for downloading
+        os.environ['HF_HUB_OFFLINE'] = '0'
+        os.environ['TRANSFORMERS_OFFLINE'] = '0'
+
+        # Download model with trust_remote_code for DotsOCR
+        print("Downloading tokenizer...")
+        tokenizer = AutoTokenizer.from_pretrained(
+            model_name,
+            trust_remote_code=True,
+            cache_dir="/root/.cache/huggingface"
+        )
+
+        print("Downloading model...")
+        model = AutoModel.from_pretrained(
+            model_name,
+            trust_remote_code=True,
+            torch_dtype="float16",
+            cache_dir="/root/.cache/huggingface"
+        )
+
+        # Also download via snapshot for completeness
+        print("Downloading complete model snapshot...")
+        snapshot_download(
+            model_name,
+            cache_dir="/root/.cache/huggingface"
+        )
+
+        print(f"✓ DotsOCR model {model_name} downloaded successfully")
+
+        # Re-enable offline mode
+        os.environ['HF_HUB_OFFLINE'] = '1'
+        os.environ['TRANSFORMERS_OFFLINE'] = '1'
+
+    except Exception as e:
+        print(f"✗ Failed to download DotsOCR model: {e}")
+        os.environ['HF_HUB_OFFLINE'] = '1'
+        os.environ['TRANSFORMERS_OFFLINE'] = '1'
+        raise
+
+if __name__ == "__main__":
+    download_dotsocr_model()
+EOF
+
+RUN chmod +x download_dotsocr.py
+
+# Download the DotsOCR model during build
+RUN python download_dotsocr.py
+
+# Create OCR service
+RUN cat > ocr_service.py << 'EOF'
+import os
+import logging
+from fastapi import FastAPI, File, UploadFile, HTTPException
+from fastapi.responses import JSONResponse
+import uvicorn
+from typing import Optional
+import time
+from PIL import Image
+import io
+
+# Import file parser if available
+try:
+    from file_parser.dots_ocr.parser import DotsOCRParser
+    DOTS_OCR_AVAILABLE = True
+except ImportError:
+    DOTS_OCR_AVAILABLE = False
+    logging.warning("DotsOCR parser not available, using basic OCR")
+
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger(__name__)
+
+app = FastAPI(title="DotsOCR Service")
+
+# Global OCR parser
+ocr_parser = None
+
+def load_ocr_parser():
+    global ocr_parser
+
+    if DOTS_OCR_AVAILABLE:
+        try:
+            # Use the correct DotsOCR model
+            ocr_parser = DotsOCRParser(
+                ip='localhost',
+                port=8000,
+                model_name='rednote-hilab/dots.ocr'
+            )
+            logger.info("DotsOCR parser loaded successfully with rednote-hilab/dots.ocr model")
+        except Exception as e:
+            logger.error(f"Failed to load DotsOCR parser: {e}")
+            ocr_parser = None
+    else:
+        logger.warning("DotsOCR not available, running in basic mode")
+
+@app.on_event("startup")
+async def startup_event():
+    load_ocr_parser()
+
+@app.get("/health")
+async def health_check():
+    return {
+        "status": "healthy",
+        "service": "dots-ocr",
+        "ocr_available": ocr_parser is not None,
+        "cuda_available": torch.cuda.is_available() if 'torch' in globals() else False,
+        "offline_mode": bool(os.environ.get('HF_HUB_OFFLINE'))
+    }
+
+@app.post("/parse")
+async def parse_document(file: UploadFile = File(...)):
+    if not file:
+        raise HTTPException(status_code=400, detail="No file provided")
+
+    try:
+        # Read file
+        file_bytes = await file.read()
+
+        start_time = time.time()
+
+        if ocr_parser and DOTS_OCR_AVAILABLE:
+            # Use DotsOCR parser
+            # Save temp file for parser
+            temp_path = f"/tmp/{file.filename}"
+            with open(temp_path, "wb") as f:
+                f.write(file_bytes)
+
+            result = ocr_parser.parse_file(temp_path)
+
+            # Clean up temp file
+            os.remove(temp_path)
+
+        else:
+            # Basic fallback - just return file info
+            result = {
+                "text": "OCR parsing not available - DotsOCR parser not loaded",
+                "filename": file.filename,
+                "file_size": len(file_bytes),
+                "content_type": file.content_type
+            }
+
+        processing_time = time.time() - start_time
+
+        return JSONResponse(content={
+            "success": True,
+            "result": result,
+            "processing_time": processing_time,
+            "filename": file.filename,
+            "parser": "DotsOCR" if (ocr_parser and DOTS_OCR_AVAILABLE) else "Basic"
+        })
+
+    except Exception as e:
+        logger.error(f"OCR processing error: {e}")
+        raise HTTPException(status_code=500, detail=str(e))
+
+if __name__ == "__main__":
+    uvicorn.run(app, host="0.0.0.0", port=8002)
+EOF
+
+# Create startup script
+RUN cat > start_ocr.sh << 'EOF'
+#!/bin/bash
+echo "Starting DotsOCR Service"
+echo "CUDA Available: $(python -c 'import torch; print(torch.cuda.is_available())' 2>/dev/null || echo 'PyTorch not available')"
+echo "Offline Mode: $HF_HUB_OFFLINE"
+
+# Start service
+exec python ocr_service.py
+EOF
+
+RUN chmod +x start_ocr.sh
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:8002/health || exit 1
+
+EXPOSE 8002
+
+CMD ["./start_ocr.sh"]

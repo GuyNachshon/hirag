@@ -1,0 +1,159 @@
+# Frontend Docker image with Langflow endpoint
+
+FROM nginx:alpine
+
+# Remove default nginx config
+RUN rm /etc/nginx/conf.d/default.conf
+
+# Copy the frontend build files
+COPY dist/ /usr/share/nginx/html/
+
+# Create nginx config with Langflow proxy
+COPY <<EOF /etc/nginx/conf.d/default.conf
+server {
+    listen 8087;
+    server_name localhost;
+
+    # Security headers
+    add_header X-Frame-Options DENY;
+    add_header X-Content-Type-Options nosniff;
+    add_header X-XSS-Protection "1; mode=block";
+
+    # Proper MIME types for JS/CSS
+    location ~* \.js$ {
+        add_header Content-Type application/javascript;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files \$uri =404;
+    }
+
+    location ~* \.css$ {
+        add_header Content-Type text/css;
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        try_files \$uri =404;
+    }
+
+    # Gzip compression
+    gzip on;
+    gzip_vary on;
+    gzip_min_length 1024;
+    gzip_types text/plain text/css text/xml text/javascript application/javascript application/xml+rss application/json;
+
+    # Static file root
+    root /usr/share/nginx/html;
+    index index.html;
+
+    # SPA routing - try files first, then fallback to index.html
+    location / {
+        try_files \$uri \$uri/ /index.html;
+    }
+
+    # Cache static assets
+    location ~* \.(png|jpg|jpeg|gif|ico|svg|woff|woff2|ttf|eot)$ {
+        expires 1y;
+        add_header Cache-Control "public, immutable";
+        add_header Access-Control-Allow-Origin "*";
+        try_files \$uri =404;
+    }
+
+    # API proxy to RAG backend
+    location /api/ {
+        proxy_pass http://rag-api:8080/;
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+
+        # CORS headers
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
+
+        # Handle preflight requests
+        if (\$request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' '*';
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
+            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+            add_header 'Access-Control-Max-Age' 1728000;
+            add_header 'Content-Type' 'text/plain; charset=utf-8';
+            add_header 'Content-Length' 0;
+            return 204;
+        }
+
+        # Timeouts
+        proxy_connect_timeout 60s;
+        proxy_send_timeout 60s;
+        proxy_read_timeout 60s;
+    }
+
+    # Langflow proxy - adjust the upstream address as needed
+    location /langflow/ {
+        # Option 1: If Langflow is on the same Docker network
+        # proxy_pass http://langflow:7860/;
+
+        # Option 2: If Langflow is on host machine (default port 7860)
+        proxy_pass http://host.docker.internal:7860/;
+
+        # Option 3: If Langflow is on specific IP/hostname
+        # proxy_pass http://192.168.1.100:7860/;
+
+        proxy_set_header Host \$host;
+        proxy_set_header X-Real-IP \$remote_addr;
+        proxy_set_header X-Forwarded-For \$proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto \$scheme;
+        proxy_set_header Upgrade \$http_upgrade;
+        proxy_set_header Connection "upgrade";
+
+        # CORS headers for Langflow
+        add_header 'Access-Control-Allow-Origin' '*' always;
+        add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS' always;
+        add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization' always;
+        add_header 'Access-Control-Expose-Headers' 'Content-Length,Content-Range' always;
+
+        # Handle preflight requests
+        if (\$request_method = 'OPTIONS') {
+            add_header 'Access-Control-Allow-Origin' '*';
+            add_header 'Access-Control-Allow-Methods' 'GET, POST, PUT, DELETE, OPTIONS';
+            add_header 'Access-Control-Allow-Headers' 'DNT,User-Agent,X-Requested-With,If-Modified-Since,Cache-Control,Content-Type,Range,Authorization';
+            add_header 'Access-Control-Max-Age' 1728000;
+            add_header 'Content-Type' 'text/plain; charset=utf-8';
+            add_header 'Content-Length' 0;
+            return 204;
+        }
+
+        # Timeouts (Langflow might need longer timeouts for flow execution)
+        proxy_connect_timeout 120s;
+        proxy_send_timeout 120s;
+        proxy_read_timeout 300s;
+    }
+
+    # Health check endpoint (proxy to backend health)
+    location /health {
+        proxy_pass http://rag-api:8080/health;
+        proxy_set_header Host \$host;
+        access_log off;
+    }
+
+    # Frontend health check
+    location /frontend-health {
+        access_log off;
+        add_header Content-Type text/plain;
+        return 200 "frontend healthy\\n";
+    }
+
+    # Error pages
+    error_page 404 /index.html;
+    error_page 500 502 503 504 /50x.html;
+    location = /50x.html {
+        root /usr/share/nginx/html;
+    }
+}
+EOF
+
+# Expose port 8087
+EXPOSE 8087
+
+# Start nginx
+CMD ["nginx", "-g", "daemon off;"]
