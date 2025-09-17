@@ -30,22 +30,23 @@ fi
 # Now check if we have the model (either already there or just downloaded)
 if [ -d "$MODEL_CACHE_PATH" ]; then
     echo "Model found in cache at: $MODEL_CACHE_PATH"
-    # Find the snapshot directory
-    SNAPSHOT_DIR=$(find "$MODEL_CACHE_PATH" -type d -name "snapshots" | head -1)
-    if [ -n "$SNAPSHOT_DIR" ]; then
-        # Get the actual snapshot hash directory
-        MODEL_PATH=$(ls -d $SNAPSHOT_DIR/* 2>/dev/null | head -1)
-        if [ -n "$MODEL_PATH" ] && [ -d "$MODEL_PATH" ]; then
-            echo "Using model snapshot: $MODEL_PATH"
-        else
-            # No snapshots directory, use the model cache path directly
-            MODEL_PATH=$MODEL_CACHE_PATH
-            echo "Using model path directly: $MODEL_PATH"
-        fi
+    # Look for the config.json file to find the actual model directory
+    CONFIG_FILE=$(find "$MODEL_CACHE_PATH" -name "config.json" -type f 2>/dev/null | head -1)
+    if [ -n "$CONFIG_FILE" ]; then
+        # Get the directory containing config.json
+        MODEL_PATH=$(dirname "$CONFIG_FILE")
+        echo "Found model with config.json at: $MODEL_PATH"
     else
-        # No snapshots directory, use the model cache path directly
-        MODEL_PATH=$MODEL_CACHE_PATH
-        echo "Using model path directly: $MODEL_PATH"
+        echo "Warning: No config.json found in model cache"
+        # Try to find snapshots directory
+        SNAPSHOT_DIR="$MODEL_CACHE_PATH/snapshots"
+        if [ -d "$SNAPSHOT_DIR" ]; then
+            MODEL_PATH=$(ls -d $SNAPSHOT_DIR/* 2>/dev/null | head -1)
+            echo "Using first snapshot directory: $MODEL_PATH"
+        else
+            MODEL_PATH=$MODEL_CACHE_PATH
+            echo "Using model cache root: $MODEL_PATH"
+        fi
     fi
 else
     echo "Error: Model not found after download attempt"
