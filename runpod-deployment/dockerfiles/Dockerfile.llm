@@ -33,11 +33,9 @@ RUN pip install --no-cache-dir \
     numpy \
     sentence-transformers
 
-# Environment variables for offline operation
+# Environment variables (offline mode disabled for downloads)
 ENV HF_HOME=/root/.cache/huggingface
 ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
-ENV HF_HUB_OFFLINE=1
-ENV TRANSFORMERS_OFFLINE=1
 ENV CUDA_VISIBLE_DEVICES=0
 ENV VLLM_USE_TRITON=0
 ENV CUDA_LAUNCH_BLOCKING=0
@@ -51,8 +49,13 @@ RUN mkdir -p /root/.cache/huggingface
 COPY source-code/download_models.py /app/download_models.py
 COPY source-code/start_vllm.sh /app/start_vllm.sh
 
-# Make scripts executable
+# Make scripts executable and download models
 RUN chmod +x /app/download_models.py /app/start_vllm.sh
+RUN python /app/download_models.py
+
+# Enable offline mode after downloads
+ENV HF_HUB_OFFLINE=1
+ENV TRANSFORMERS_OFFLINE=1
 
 # Health check
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \

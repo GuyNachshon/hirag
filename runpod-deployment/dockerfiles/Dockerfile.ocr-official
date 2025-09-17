@@ -17,12 +17,10 @@ WORKDIR /workspace
 # Copy the DotsOCR source from our repository
 COPY source-code/file_parser/dots_ocr/ ./dots_ocr/
 
-# Environment variables
+# Environment variables (offline mode disabled for downloads)
 ENV PYTHONPATH="/workspace:/workspace/weights:$PYTHONPATH"
 ENV HF_HOME=/root/.cache/huggingface
 ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
-ENV HF_HUB_OFFLINE=1
-ENV TRANSFORMERS_OFFLINE=1
 
 # Download DotsOCR model to weights directory
 RUN mkdir -p /workspace/weights
@@ -31,6 +29,10 @@ RUN mkdir -p /workspace/weights
 COPY source-code/download_dotsocr.py ./download_dotsocr.py
 RUN chmod +x download_dotsocr.py
 RUN python download_dotsocr.py
+
+# Enable offline mode after downloads
+ENV HF_HUB_OFFLINE=1
+ENV TRANSFORMERS_OFFLINE=1
 
 # Copy FastAPI adapter and startup script
 COPY source-code/ocr_fastapi_adapter.py ./ocr_fastapi_adapter.py
