@@ -34,7 +34,7 @@ for i in {1..60}; do
 done
 
 echo "Starting FastAPI adapter..."
-python ocr_fastapi_adapter.py &
+python3 ocr_fastapi_adapter.py &
 FASTAPI_PID=$!
 
 # Wait for either process to exit

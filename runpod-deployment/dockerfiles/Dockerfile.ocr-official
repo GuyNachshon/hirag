@@ -28,7 +28,7 @@ RUN mkdir -p /workspace/weights
 # Copy model download script
 COPY source-code/download_dotsocr.py ./download_dotsocr.py
 RUN chmod +x download_dotsocr.py
-RUN python download_dotsocr.py
+RUN python3 download_dotsocr.py
 
 # Enable offline mode after downloads
 ENV HF_HUB_OFFLINE=1
