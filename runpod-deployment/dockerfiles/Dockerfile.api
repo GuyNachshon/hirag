@@ -41,6 +41,11 @@ COPY source-code/file_parser/ ./file_parser/
 # Install HiRAG in development mode
 RUN cd HiRAG && pip install -e .
 
+# Pre-cache tiktoken encodings for offline operation
+RUN python -c "import tiktoken; tiktoken.get_encoding('cl100k_base')"
+RUN python -c "import tiktoken; tiktoken.get_encoding('p50k_base')"
+RUN python -c "import tiktoken; tiktoken.get_encoding('r50k_base')"
+
 # Create necessary directories
 RUN mkdir -p logs data hirag_data
 
