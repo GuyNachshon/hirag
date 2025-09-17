@@ -38,6 +38,9 @@ COPY source-code/api/ ./api/
 COPY source-code/HiRAG/ ./HiRAG/
 COPY source-code/file_parser/ ./file_parser/
 
+# Copy config file from configs directory (config.yaml is gitignored)
+COPY configs/hirag-config.yaml ./HiRAG/config.yaml
+
 # Install HiRAG in development mode
 RUN cd HiRAG && pip install -e .
 
