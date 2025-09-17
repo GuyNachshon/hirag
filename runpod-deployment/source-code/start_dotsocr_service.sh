@@ -3,17 +3,28 @@ set -e
 
 echo "Starting DotsOCR service with vLLM backend"
 
+# Set PYTHONPATH to include the weights directory parent
+export PYTHONPATH=/workspace/weights:$PYTHONPATH
+echo "PYTHONPATH set to: $PYTHONPATH"
+
+# Check if modeling file exists
+if [ -f "/workspace/weights/DotsOCR/modeling_dots_ocr_vllm.py" ]; then
+    echo "Found modeling_dots_ocr_vllm.py in weights directory"
+else
+    echo "Warning: modeling_dots_ocr_vllm.py not found in weights directory"
+fi
+
 # Patch vLLM entrypoint to include DotsOCR modeling
 echo "Patching vLLM entrypoint..."
-sed -i '/^from vllm\.entrypoints\.cli\.main import main/a from DotsOCR import modeling_dots_ocr_vllm' $(which vllm)
+sed -i '/^from vllm\.entrypoints\.cli\.main import main/a from DotsOCR import modeling_dots_ocr_vllm' $(which vllm) 2>/dev/null || true
 
-echo "Starting vLLM server in background..."
-python3 -m vllm.entrypoints.openai.api_server \
-    --model /workspace/weights/DotsOCR \
+echo "Starting vLLM server..."
+# Use vllm serve command (modern format)
+vllm serve /workspace/weights/DotsOCR \
     --tensor-parallel-size 1 \
-    --gpu-memory-utilization 0.8 \
+    --gpu-memory-utilization 0.95 \
     --chat-template-content-format string \
-    --served-model-name dotsocr-model \
+    --served-model-name model \
     --trust-remote-code \
     --host 0.0.0.0 \
     --port 8000 &
