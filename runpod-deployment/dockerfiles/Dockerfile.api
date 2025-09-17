@@ -1,6 +1,10 @@
 # RAG API Server - Complete FastAPI with HiRAG integration
 FROM python:3.11-slim
 
+# Set timezone to avoid interactive prompts
+ENV DEBIAN_FRONTEND=noninteractive
+ENV TZ=UTC
+
 WORKDIR /app
 
 # Install system dependencies including audio processing
