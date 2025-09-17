@@ -8,7 +8,7 @@ echo "Patching vLLM entrypoint..."
 sed -i '/^from vllm\.entrypoints\.cli\.main import main/a from DotsOCR import modeling_dots_ocr_vllm' $(which vllm)
 
 echo "Starting vLLM server in background..."
-python -m vllm.entrypoints.openai.api_server \
+python3 -m vllm.entrypoints.openai.api_server \
     --model /workspace/weights/DotsOCR \
     --tensor-parallel-size 1 \
     --gpu-memory-utilization 0.8 \
