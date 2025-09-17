@@ -19,23 +19,38 @@ nvidia-smi || echo "No GPU detected"
 
 # Check if model exists in cache and set model path
 MODEL_CACHE_PATH="/root/.cache/huggingface/models--$(echo $MODEL_NAME | sed 's/\//-/')"
-if [ -d "$MODEL_CACHE_PATH" ]; then
-    echo "Model found in cache at: $MODEL_CACHE_PATH"
-    MODEL_PATH="$MODEL_CACHE_PATH/snapshots/*"
-    # Get the actual snapshot directory
-    MODEL_PATH=$(ls -d $MODEL_PATH | head -1)
-    echo "Using model snapshot: $MODEL_PATH"
-else
+echo "Checking for model at: $MODEL_CACHE_PATH"
+
+# If directory doesn't exist, try downloading
+if [ ! -d "$MODEL_CACHE_PATH" ]; then
     echo "Model not found in cache, trying to download..."
     python /app/download_models.py
-    # Check again after download
-    if [ -d "$MODEL_CACHE_PATH" ]; then
-        MODEL_PATH="$MODEL_CACHE_PATH/snapshots/*"
-        MODEL_PATH=$(ls -d $MODEL_PATH | head -1)
+fi
+
+# Now check if we have the model (either already there or just downloaded)
+if [ -d "$MODEL_CACHE_PATH" ]; then
+    echo "Model found in cache at: $MODEL_CACHE_PATH"
+    # Find the snapshot directory
+    SNAPSHOT_DIR=$(find "$MODEL_CACHE_PATH" -type d -name "snapshots" | head -1)
+    if [ -n "$SNAPSHOT_DIR" ]; then
+        # Get the actual snapshot hash directory
+        MODEL_PATH=$(ls -d $SNAPSHOT_DIR/* 2>/dev/null | head -1)
+        if [ -n "$MODEL_PATH" ] && [ -d "$MODEL_PATH" ]; then
+            echo "Using model snapshot: $MODEL_PATH"
+        else
+            # No snapshots directory, use the model cache path directly
+            MODEL_PATH=$MODEL_CACHE_PATH
+            echo "Using model path directly: $MODEL_PATH"
+        fi
     else
-        echo "Error: Model download failed or path not found"
-        MODEL_PATH=$MODEL_NAME  # Fallback to repo ID
+        # No snapshots directory, use the model cache path directly
+        MODEL_PATH=$MODEL_CACHE_PATH
+        echo "Using model path directly: $MODEL_PATH"
     fi
+else
+    echo "Error: Model not found after download attempt"
+    echo "Falling back to repository ID: $MODEL_NAME"
+    MODEL_PATH=$MODEL_NAME
 fi
 
 # Start vLLM server (modern format for v0.10.1+)
