@@ -2,6 +2,8 @@
 
 This directory contains everything needed to deploy the complete RAG system on RunPod 8x A100 cluster and create an offline package for your H100 environment.
 
+> **✨ NEW**: Now using official DotsOCR and Ivrit-AI repositories for better performance and reliability!
+
 ## 📋 Prerequisites from Main README
 
 Based on the main README.md, our system requires:
@@ -29,13 +31,13 @@ Based on the main README.md, our system requires:
 ### 1. Official Repository Integration (NEW - Recommended)
 ```bash
 # Build using official DotsOCR and Ivrit-AI repositories
-./scripts/build_official_images.sh
+./scripts/build/build_official_images.sh
 
 # Test the official-based images
-./scripts/test_official_images.sh
+./scripts/testing/test_official_images.sh
 
 # Deploy with official implementations
-./scripts/deploy_h100_manual.sh
+./scripts/deployment/deploy_h100_manual.sh
 ```
 
 **Benefits:**
@@ -48,59 +50,70 @@ Based on the main README.md, our system requires:
 ### 2. H100 Cluster Deployment
 ```bash
 # H100-optimized deployment (no docker-compose)
-./scripts/deploy_h100_optimized.sh
+./scripts/deployment/deploy_h100_optimized.sh
 
 # Manual deployment for isolated networks
-./scripts/deploy_h100_manual.sh
+./scripts/deployment/deploy_h100_manual.sh
 
 # Sequential service startup with dependency management
-./scripts/start_services_sequential.sh start
+./scripts/deployment/start_services_sequential.sh start
 ```
 
-### 2. RunPod Testing Environment
+### 3. Testing & Validation
 ```bash
-# Original RunPod deployment script
-./scripts/deploy_runpod_cluster.sh
+# Test individual services
+./scripts/testing/test_official_images.sh
 
-# Build Ivrit-AI Whisper for offline use
-./scripts/build_ivrit_whisper_offline.sh
-```
-
-### 3. Test All Components
-```bash
-# Comprehensive service testing
-./scripts/test_all_services.sh
+# Comprehensive RAG integration test
+./scripts/testing/test_rag_integration.sh
 
 # Test in offline mode simulation
-sudo ./scripts/simulate_offline_mode.sh
+sudo ./scripts/utilities/simulate_offline_mode.sh
 ```
 
 ### 4. Create Offline Package
 ```bash
 # Package everything for H100 deployment
-./scripts/create_offline_package_runpod.sh
+./scripts/utilities/create_offline_package_runpod.sh
 ```
 
 ## 📁 Directory Structure
 
 ```
 runpod-deployment/
-├── README.md                           # This file
-├── scripts/                            # Deployment scripts
-│   ├── deploy_runpod_cluster.sh       # Main deployment
-│   ├── build_ivrit_whisper_offline.sh # Whisper setup
-│   ├── create_offline_package_runpod.sh # Package creator
-│   ├── simulate_offline_mode.sh       # Offline testing
-│   └── test_all_services.sh           # Service testing
+├── README.md                           # Main deployment guide
+├── scripts/                            # Organized deployment scripts
+│   ├── README.md                       # Scripts documentation
+│   ├── build/                          # Build scripts
+│   │   ├── build_official_images.sh   # Official repo builds (NEW)
+│   │   └── build_ivrit_whisper_offline.sh # Legacy Whisper build
+│   ├── deployment/                     # Deployment scripts
+│   │   ├── deploy_h100_manual.sh      # Manual H100 deployment
+│   │   ├── deploy_h100_optimized.sh   # Optimized H100 deployment
+│   │   └── start_services_sequential.sh # Sequential startup
+│   ├── testing/                        # Testing scripts
+│   │   ├── test_official_images.sh    # Test official builds
+│   │   ├── test_rag_integration.sh    # Full integration test
+│   │   └── test_all_services.sh       # Comprehensive testing
+│   └── utilities/                      # Utility scripts
+│       ├── create_offline_package_runpod.sh # Package creator
+│       └── simulate_offline_mode.sh   # Offline simulation
 ├── configs/                            # Configuration files
-│   ├── gpu-distribution.yaml          # GPU allocation
-│   ├── hirag-config.yaml             # HiRAG settings
-│   └── docker-compose.yaml           # Service orchestration
+│   ├── README.md                       # Config documentation
+│   ├── docker-compose.yaml            # Service orchestration
+│   ├── gpu-distribution.yaml          # GPU allocation strategy
+│   └── hirag-config.yaml             # HiRAG system settings
 ├── dockerfiles/                       # Container definitions
 │   ├── Dockerfile.api                 # RAG API server
 │   ├── Dockerfile.frontend            # Frontend + Langflow
-│   ├── Dockerfile.whisper-optimized   # Ivrit-AI Whisper
-│   └── Dockerfile.llm                 # vLLM base image
+│   ├── Dockerfile.llm                 # vLLM base image
+│   ├── Dockerfile.ocr-official        # DotsOCR with vLLM (NEW)
+│   └── Dockerfile.whisper-official    # Ivrit-AI Whisper (NEW)
+├── source-code/                       # Application source
+│   ├── api/                           # RAG API implementation
+│   ├── frontend/                      # Frontend application
+│   ├── file_parser/                   # DotsOCR integration
+│   └── HiRAG/                         # HiRAG system
 └── docs/                              # Documentation
     ├── API_ENDPOINTS.md               # Complete API reference
     ├── GPU_ALLOCATION.md              # GPU distribution guide
