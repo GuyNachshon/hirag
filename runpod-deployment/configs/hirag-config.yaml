@@ -1,6 +1,11 @@
 # HiRAG Configuration for RunPod Deployment
 # Containerized environment with vLLM services
 
+# Model Parameters (legacy format for API compatibility)
+model_params:
+  vllm_embedding_dim: 1024  # Qwen3-Embedding-4B dimension
+  max_token_size: 4096
+
 # Model Configuration
 models:
   # LLM Model (served by rag-llm-server container)

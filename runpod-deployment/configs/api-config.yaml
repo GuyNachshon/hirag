@@ -1,0 +1,32 @@
+# HiRAG Configuration for RunPod Deployment
+# Containerized environment with vLLM services
+
+# Model Parameters (legacy format for API compatibility)
+model_params:
+  vllm_embedding_dim: 1024  # Qwen3-Embedding-4B dimension
+  max_token_size: 4096
+
+# vLLM configuration
+VLLM:
+    api_key: 0
+    llm:
+        model: "openai/gpt-oss-20b"
+        base_url: "http://rag-llm-server:8000/v1"
+    embedding:
+        model: "Qwen/Qwen3-Embedding-4B"
+        base_url: "http://rag-embedding-server:8000/v1"
+
+# DotsOCR configuration
+dots_ocr:
+  ip: "rag-dots-ocr"
+  port: 8000
+  model_name: "model"
+
+# HiRAG Configuration
+hirag:
+  working_dir: "your_work_dir"
+  enable_llm_cache: false
+  enable_hierarchical_mode: true
+  embedding_batch_num: 6
+  embedding_func_max_async: 8
+  enable_naive_rag: true
