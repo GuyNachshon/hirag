@@ -107,9 +107,9 @@ VLLM_MODEL_NAME = "dotsocr-model"
 
 # DotsOCR prompt templates
 PROMPT_TEMPLATES = {
-    "layout_all": """Please parse this document image and extract the layout and content. Return the result in JSON format with bounding boxes and text content.""",
-    "layout_only": """Please detect the layout elements in this document image. Return bounding boxes for all elements.""",
-    "ocr_only": """Please extract all text content from this document image."""
+    "layout_all": "Please parse this document image and extract the layout and content. Return the result in JSON format with bounding boxes and text content.",
+    "layout_only": "Please detect the layout elements in this document image. Return bounding boxes for all elements.",
+    "ocr_only": "Please extract all text content from this document image."
 }
 
 async def encode_image_to_base64(image_path: str) -> str:
