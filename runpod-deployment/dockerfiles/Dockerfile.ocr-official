@@ -47,4 +47,6 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 
 EXPOSE 8000 8002
 
+# Override the entrypoint from base image
+ENTRYPOINT ["/bin/bash"]
 CMD ["./start_dotsocr_service.sh"]
