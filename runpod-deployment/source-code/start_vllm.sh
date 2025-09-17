@@ -19,7 +19,7 @@ nvidia-smi || echo "No GPU detected"
 
 # Check if model exists in cache and set model path
 # Replace forward slash with double dash for HuggingFace cache format
-MODEL_CACHE_PATH="/root/.cache/huggingface/models--$(echo $MODEL_NAME | sed 's/\//-/g')"
+MODEL_CACHE_PATH="/root/.cache/huggingface/models--$(echo $MODEL_NAME | sed 's/\//--/g')"
 echo "Checking for model at: $MODEL_CACHE_PATH"
 
 # If directory doesn't exist, try downloading

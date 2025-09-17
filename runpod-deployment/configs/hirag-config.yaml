@@ -135,6 +135,16 @@ health:
   max_retries: 3
   retry_delay: 1  # seconds
 
+# vLLM Service Configuration (for API compatibility)
+VLLM:
+  api_key: "dummy-key"
+  embedding:
+    base_url: "http://localhost:8001/v1"  # Embedding service port
+    model: "Qwen/Qwen3-Embedding-4B"
+  llm:
+    base_url: "http://localhost:8000/v1"  # LLM service port
+    model: "openai/gpt-oss-20b"
+
 # HiRAG Configuration
 hirag:
   working_dir: "/app/hirag_data"
