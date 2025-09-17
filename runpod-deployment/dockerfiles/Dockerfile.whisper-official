@@ -23,21 +23,23 @@ RUN pip install --no-cache-dir \
     numpy \
     requests
 
-# Environment variables
+# Environment variables (offline mode disabled for downloads)
 ENV PYTHONDONTWRITEBYTECODE=1
 ENV PYTHONUNBUFFERED=1
 ENV HF_HOME=/root/.cache/huggingface
 ENV TRANSFORMERS_CACHE=/root/.cache/huggingface
-ENV HF_HUB_OFFLINE=1
-ENV TRANSFORMERS_OFFLINE=1
 ENV DEVICE=cuda
 ENV MODEL_NAME=ivrit-ai/whisper-large-v3-ct2
 
-# Pre-download models (based on Ivrit-AI Dockerfile)
+# Pre-download models (with internet access)
 RUN python3 -c 'import faster_whisper; m = faster_whisper.WhisperModel("ivrit-ai/whisper-large-v3-turbo-ct2")'
 RUN python3 -c 'import faster_whisper; m = faster_whisper.WhisperModel("ivrit-ai/whisper-large-v3-ct2")'
 RUN python3 -c 'import pyannote.audio; p = pyannote.audio.Pipeline.from_pretrained("ivrit-ai/pyannote-speaker-diarization-3.1")'
 RUN python3 -c 'from speechbrain.inference.speaker import EncoderClassifier; EncoderClassifier.from_hparams(source="speechbrain/spkrec-ecapa-voxceleb")'
+
+# Enable offline mode after downloads
+ENV HF_HUB_OFFLINE=1
+ENV TRANSFORMERS_OFFLINE=1
 
 # Copy the Whisper FastAPI service and startup script
 COPY source-code/whisper_fastapi_service.py ./whisper_fastapi_service.py
