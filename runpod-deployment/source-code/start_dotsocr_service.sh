@@ -31,16 +31,19 @@ vllm serve /workspace/weights/DotsOCR \
 
 VLLM_PID=$!
 
-# Wait for vLLM to be ready
-echo "Waiting for vLLM service to be ready..."
-for i in {1..60}; do
-    if curl -f http://localhost:8000/health >/dev/null 2>&1; then
+# Wait for vLLM to be ready (increased timeout for model loading)
+echo "Waiting for vLLM service to be ready (this may take a few minutes for model loading)..."
+for i in {1..150}; do
+    if curl -f http://localhost:8000/v1/models >/dev/null 2>&1; then
         echo "vLLM service is ready!"
         break
     fi
-    if [ $i -eq 60 ]; then
-        echo "vLLM service failed to start"
+    if [ $i -eq 150 ]; then
+        echo "vLLM service failed to start after 5 minutes"
         exit 1
+    fi
+    if [ $((i % 30)) -eq 0 ]; then
+        echo "Still waiting... ($((i*2)) seconds elapsed)"
     fi
     sleep 2
 done
