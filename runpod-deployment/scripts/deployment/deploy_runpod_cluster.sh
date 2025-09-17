@@ -64,19 +64,14 @@ prepare_repository() {
 
     cd /workspace
 
-    # Clone if not exists
-    if [ ! -d "rag-v2" ]; then
-        echo "Cloning repository..."
-        # Replace with your actual repository
-        git clone https://github.com/YOUR_USERNAME/rag-v2.git
-        cd rag-v2
-    else
-        cd rag-v2
-        git pull
-    fi
+    # Use current directory instead of cloning
+    echo "Using existing repository..."
+    cd ~/hirag
 
-    # Link model cache
-    ln -sf /workspace/model-cache model-cache
+    # Set up model cache
+    export MODEL_CACHE_DIR=/workspace/model-cache
+    mkdir -p $MODEL_CACHE_DIR
+    ln -sf /workspace/model-cache model-cache 2>/dev/null || true
 
     print_status "Repository ready"
 }
