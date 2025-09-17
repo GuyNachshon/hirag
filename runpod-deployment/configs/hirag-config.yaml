@@ -135,6 +135,15 @@ health:
   max_retries: 3
   retry_delay: 1  # seconds
 
+# HiRAG Configuration
+hirag:
+  working_dir: "/app/hirag_data"
+  enable_llm_cache: false
+  enable_hierarchical_mode: true
+  embedding_batch_num: 6
+  embedding_func_max_async: 8
+  enable_naive_rag: true
+
 # GPU Configuration (for reference - actual allocation done by Docker)
 gpu:
   # Device allocation (informational)
