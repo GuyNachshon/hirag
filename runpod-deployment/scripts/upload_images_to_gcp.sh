@@ -50,17 +50,35 @@ echo_info "Timestamp: ${TIMESTAMP}"
 # Create upload directory
 mkdir -p "${UPLOAD_DIR}"
 
+# Set gcloud path
+GCLOUD_PATH="${GCLOUD_PATH:-/Users/guynachshon/Documents/baddon-ai/rag-v2/google-cloud-sdk/bin/gcloud}"
+GSUTIL_PATH="${GSUTIL_PATH:-/Users/guynachshon/Documents/baddon-ai/rag-v2/google-cloud-sdk/bin/gsutil}"
+
+# Check if gcloud exists
+if [ ! -x "$GCLOUD_PATH" ]; then
+    # Try system gcloud as fallback
+    if command -v gcloud &> /dev/null; then
+        GCLOUD_PATH="gcloud"
+        GSUTIL_PATH="gsutil"
+    else
+        echo_error "gcloud not found at $GCLOUD_PATH or in system PATH"
+        echo_info "Please ensure Google Cloud SDK is installed"
+        echo_info "Or set GCLOUD_PATH environment variable"
+        exit 1
+    fi
+fi
+
 # Check if gcloud is authenticated
-if ! gcloud auth list --filter="status:ACTIVE" --format="value(account)" | grep -q .; then
-    echo_error "No active gcloud authentication found. Please run: gcloud auth login"
+if ! $GCLOUD_PATH auth list --filter="status:ACTIVE" --format="value(account)" | grep -q .; then
+    echo_error "No active gcloud authentication found. Please run: $GCLOUD_PATH auth login"
     exit 1
 fi
 
 # Create bucket if it doesn't exist
 echo_info "Ensuring bucket gs://${BUCKET_NAME} exists..."
-if ! gsutil ls -b "gs://${BUCKET_NAME}" &>/dev/null; then
+if ! $GSUTIL_PATH ls -b "gs://${BUCKET_NAME}" &>/dev/null; then
     echo_info "Creating bucket gs://${BUCKET_NAME}..."
-    gsutil mb -p "${PROJECT_ID}" "gs://${BUCKET_NAME}"
+    $GSUTIL_PATH mb -p "${PROJECT_ID}" "gs://${BUCKET_NAME}"
     echo_success "Bucket created successfully"
 else
     echo_info "Bucket already exists"
@@ -99,10 +117,10 @@ save_and_upload_image() {
 
     # Upload to GCS
     echo_info "Uploading ${gz_file} to gs://${BUCKET_NAME}/..."
-    gsutil -m cp "${gz_file}" "gs://${BUCKET_NAME}/"
+    $GSUTIL_PATH -m cp "${gz_file}" "gs://${BUCKET_NAME}/"
 
     # Verify upload
-    if gsutil ls "gs://${BUCKET_NAME}/$(basename ${gz_file})" &>/dev/null; then
+    if $GSUTIL_PATH ls "gs://${BUCKET_NAME}/$(basename ${gz_file})" &>/dev/null; then
         echo_success "Successfully uploaded $(basename ${gz_file})"
         # Clean up local file
         rm "${gz_file}"
@@ -153,9 +171,9 @@ for image in "${IMAGES[@]}"; do
             echo "," >> "${MANIFEST_FILE}"
         fi
 
-        local image_id=$(docker image inspect "${image}" --format='{{.Id}}')
-        local image_size=$(docker image inspect "${image}" --format='{{.Size}}')
-        local safe_name=$(echo "$image" | tr ':/' '_')
+        image_id=$(docker image inspect "${image}" --format='{{.Id}}')
+        image_size=$(docker image inspect "${image}" --format='{{.Size}}')
+        safe_name=$(echo "$image" | tr ':/' '_')
 
         cat >> "${MANIFEST_FILE}" << EOF
     {
