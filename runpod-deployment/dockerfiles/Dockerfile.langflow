@@ -1,0 +1,46 @@
+FROM python:3.11-slim
+
+# Set working directory
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Langflow
+RUN pip install langflow
+
+# Create langflow user and directories
+RUN useradd -m -u 1000 langflow && \
+    mkdir -p /app/langflow && \
+    chown -R langflow:langflow /app/langflow
+
+# Switch to langflow user
+USER langflow
+
+# Set environment variables for HiRAG integration
+ENV LANGFLOW_HOST=0.0.0.0
+ENV LANGFLOW_PORT=7860
+ENV LANGFLOW_AUTO_LOGIN=false
+
+# HiRAG service endpoints (will be available via Docker network)
+ENV HIRAG_API_URL=http://rag-api:8080
+ENV HIRAG_LLM_URL=http://hirag-llm:8000/v1
+ENV HIRAG_EMBEDDING_URL=http://hirag-embedding:8001/v1
+ENV HIRAG_OCR_URL=http://rag-ocr:8002
+ENV HIRAG_WHISPER_URL=http://rag-whisper:8004
+
+# Create basic Langflow configuration
+RUN mkdir -p /app/langflow/.langflow
+
+# Expose port
+EXPOSE 7860
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=5s --retries=3 \
+    CMD curl -f http://localhost:7860/health || exit 1
+
+# Start Langflow
+CMD ["python", "-m", "langflow", "run", "--host", "0.0.0.0", "--port", "7860"]
