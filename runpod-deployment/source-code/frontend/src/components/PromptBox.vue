@@ -33,6 +33,7 @@ const isPopoverOpen = ref(false);
 const isSending = ref(false);
 const selectedFiles = ref([]);
 const isUploading = ref(false);
+const useRag = ref(true); // RAG toggle state
 
 const modes = [
   {
@@ -144,14 +145,14 @@ const handleSendMessage = async () => {
     isSending.value = true;
     const messageContent = internalTextareaValue.value;
     const files = selectedFiles.value.map(f => f.file);
-    
+
     // Clear the textarea and files
     internalTextareaValue.value = '';
     selectedFiles.value = [];
-    
-    // Emit the message-sent event with the message content and files
-    emit('message-sent', messageContent, files);
-    
+
+    // Emit the message-sent event with the message content, useRag flag, and files
+    emit('message-sent', messageContent, useRag.value, files);
+
     // Reset sending state after a short delay
     setTimeout(() => {
       isSending.value = false;
@@ -311,14 +312,33 @@ const formatFileSize = (bytes) => {
             </Tooltip>
           </PopoverRoot>
 
+          <!-- RAG Toggle -->
+          <Tooltip>
+            <TooltipTrigger as-child>
+              <button
+                class="prompt-box__bottom__tooltip__button prompt-box__bottom__tooltip__button--rag"
+                :class="{ 'prompt-box__bottom__tooltip__button--rag-active': useRag }"
+                type="button"
+                @click="useRag = !useRag"
+                :disabled="isSending"
+              >
+                <DatabaseZap class="prompt-box__bottom__tooltip__button__icon" />
+                <span class="prompt-box__bottom__tooltip__button__name">{{ useRag ? 'RAG פעיל' : 'RAG כבוי' }}</span>
+              </button>
+            </TooltipTrigger>
+            <TooltipContent side="bottom" :show-arrow="true" class="tooltip-content">
+              <p>{{ useRag ? 'השתמש במאגר ידע (RAG)' : 'מצב שיחה רגיל' }}</p>
+            </TooltipContent>
+          </Tooltip>
+
           <!-- Left side buttons -->
            <div class="prompt-box__bottom__right">
             <Tooltip>
               <TooltipTrigger as-child>
-                <button 
-                  class="prompt-box__bottom__right__button" 
-                  type="submit" 
-                  :disabled="!hasValue || isSending" 
+                <button
+                  class="prompt-box__bottom__right__button"
+                  type="submit"
+                  :disabled="!hasValue || isSending"
                   @click="handleSendMessage"
                 >
                   <ArrowUp class="prompt-box__bottom__right__button__icon" />
@@ -483,6 +503,19 @@ const formatFileSize = (bytes) => {
           &--plus {
             width: calc($spacing * 6);
             height: calc($spacing * 6);
+          }
+        }
+
+        &--rag {
+          transition: all 0.3s ease;
+
+          &-active {
+            background-color: #2294ff !important;
+            color: $color-white;
+
+            &:hover {
+              background-color: #1a7acc !important;
+            }
           }
         }
       }

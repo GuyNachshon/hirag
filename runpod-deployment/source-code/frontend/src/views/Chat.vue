@@ -13,9 +13,9 @@ const scrollToBottom = () => {
   el.scrollTo({ top: el.scrollHeight, behavior: 'smooth' })
 }
 
-const handleMessageSent = async (messageContent, files = []) => {
+const handleMessageSent = async (messageContent, useRag = true, files = []) => {
   try {
-    await chatStore.sendMessage(messageContent, true, files)
+    await chatStore.sendMessage(messageContent, useRag, files)
   } catch (error) {
     console.error('Error sending message:', error)
     // You could show a toast notification here
