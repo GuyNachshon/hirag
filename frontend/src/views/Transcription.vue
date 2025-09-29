@@ -14,11 +14,14 @@ const handleFileChange = (event) => {
     // Validate file type
     const allowedTypes = [
       'audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 
-      'audio/flac', 'audio/aac', 'audio/webm', 'audio/m4a'
+      'audio/flac', 'audio/aac', 'audio/webm', 'audio/m4a',
+      'audio/x-wav', 'audio/x-m4a', 'audio/x-aac',
+      'audio/x-mpeg', 'audio/x-ogg', 'audio/x-flac'
     ]
     
     if (!allowedTypes.includes(file.type)) {
       error.value = 'סוג קובץ לא נתמך. אנא העלה קובץ אודיו'
+      console.error(`uploaded file type: ${file.type}, not in allowed types: ${allowedTypes.join(', ')}`)
       return
     }
     
