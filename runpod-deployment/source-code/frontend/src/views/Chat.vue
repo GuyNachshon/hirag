@@ -34,9 +34,11 @@ const handleEditMessage = async (messageId, newContent) => {
 // Initialize component when it mounts
 onMounted(async () => {
   try {
-    // Clear messages for new conversation
-    await chatStore.clearMessages()
-    
+    // Only clear messages if we don't have any active session
+    if (!chatStore.currentSessionId && chatStore.messages.length === 0) {
+      await chatStore.clearMessages()
+    }
+
     // Load document stats
     await chatStore.loadDocumentStats()
     await nextTick()

@@ -33,7 +33,7 @@ const isPopoverOpen = ref(false);
 const isSending = ref(false);
 const selectedFiles = ref([]);
 const isUploading = ref(false);
-const useRag = ref(true); // RAG toggle state
+const useRag = ref(false); // RAG toggle state - default OFF
 
 const modes = [
   {
