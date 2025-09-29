@@ -27,15 +27,11 @@ export const api = {
   // File search endpoint
   async searchFiles(query, maxResults = 10) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/search`, {
-        method: 'POST',
+      const response = await fetch(`${API_BASE_URL}/api/search/files?query=${encodeURIComponent(query)}&max_results=${maxResults}`, {
+        method: 'GET',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({
-          query,
-          max_results: maxResults,
-        }),
       });
       return response.json();
     } catch (error) {
@@ -76,7 +72,7 @@ export const api = {
 
   async getChatHistory(sessionId) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chat/sessions/${sessionId}/messages`);
+      const response = await fetch(`${API_BASE_URL}/api/chat/sessions/${sessionId}/history`);
       return response.json();
     } catch (error) {
       console.error('Get chat history failed:', error);
@@ -90,13 +86,13 @@ export const api = {
       const formData = new FormData();
       formData.append('content', content);
       formData.append('use_rag', useRag);
-      
+
       // Add files if any
       files.forEach(file => {
         formData.append('files', file);
       });
 
-      const response = await fetch(`${API_BASE_URL}/api/chat/sessions/${sessionId}/messages`, {
+      const response = await fetch(`${API_BASE_URL}/api/chat/${sessionId}/message`, {
         method: 'POST',
         body: formData,
       });
@@ -137,6 +133,17 @@ export const api = {
     } catch (error) {
       console.error('File upload failed:', error);
       return { success: false, error: error.message };
+    }
+  },
+
+  // Transcription service health check
+  async transcriptionHealth() {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/transcribe/health`);
+      return response.json();
+    } catch (error) {
+      console.error('Transcription health check failed:', error);
+      return { status: 'error', message: error.message };
     }
   },
 

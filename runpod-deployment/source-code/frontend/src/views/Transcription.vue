@@ -13,8 +13,9 @@ const handleFileChange = (event) => {
   if (file) {
     // Validate file type
     const allowedTypes = [
-      'audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/ogg', 
-      'audio/flac', 'audio/aac', 'audio/webm', 'audio/m4a'
+      'audio/wav', 'audio/mp3', 'audio/mpeg', 'audio/ogg',
+      'audio/flac', 'audio/aac', 'audio/webm', 'audio/m4a',
+      'audio/mp4', 'audio/x-m4a', 'video/mp4'  // Additional m4a MIME types
     ]
     
     if (!allowedTypes.includes(file.type)) {
@@ -83,10 +84,10 @@ const copyTranscription = async () => {
 onMounted(async () => {
   try {
     // Check if transcription service is available via health check
-    const health = await api.health()
+    const health = await api.transcriptionHealth()
     transcriptionStatus.value = {
-      status: health.status === 'ok' ? 'active' : 'inactive',
-      model: 'whisper' // Default model
+      status: health.status === 'healthy' ? 'active' : 'inactive',
+      model: health.model || 'whisper'
     }
   } catch (err) {
     console.error('Failed to get transcription status:', err)

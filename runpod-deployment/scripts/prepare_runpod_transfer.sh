@@ -1,8 +1,8 @@
 #!/bin/bash
 
-# RunPod Transfer Preparation Script
-# Downloads Docker images from GCP and prepares everything for RunPod deployment
-# Chunks large files (>20GB), includes documentation, uses caffeinate
+# H100 Transfer Preparation Script
+# Downloads Docker images from GCP and prepares everything for H100 isolated environment
+# Keeps files compressed, checks for existing downloads, uses caffeinate
 
 set -e
 
@@ -275,8 +275,8 @@ chunk_file() {
     fi
 }
 
-# Function to create load script for chunked files
-create_load_script() {
+# REMOVED - Function to create load script for chunked files
+create_load_script_removed() {
     local transfer_dir="$1"
     local script_file="${transfer_dir}/load_images.sh"
 
@@ -417,7 +417,7 @@ prepare_runpod_transfer() {
     local local_manifest="${temp_dir}/${manifest_file}"
 
     echo_info "📄 Downloading manifest: $manifest_file"
-    if ! gsutil cp "gs://${BUCKET_NAME}/${manifest_file}" "$local_manifest"; then
+    if ! $GSUTIL_PATH cp "gs://${BUCKET_NAME}/${manifest_file}" "$local_manifest"; then
         echo_error "Failed to download manifest for timestamp: $timestamp"
         list_available_versions
         exit 1
@@ -444,37 +444,59 @@ prepare_runpod_transfer() {
         local image_name="$2"
         local index="$3"
 
-        echo_info "[$index/$total_images] 📥 Downloading: $image_name"
+        echo_info "[$index/$total_images] 📥 Processing: $image_name"
 
-        local compressed_file="${temp_dir}/${filename}"
-        local tar_file="${temp_dir}/${filename%.gz}"
-        local final_file="${transfer_dir}/${filename%.gz}"
+        local compressed_file="${transfer_dir}/${filename}"
+        local tar_file="${transfer_dir}/${filename%.gz}"
+        local temp_compressed="${temp_dir}/${filename}"
 
-        # Download compressed file
+        # Check if file already exists in transfer directory
+        if [ -f "$compressed_file" ]; then
+            local existing_size=$(ls -lh "$compressed_file" | awk '{print $5}')
+            echo_info "   ✅ Already exists: $compressed_file ($existing_size)"
+            echo_info "   Skipping download"
+            return 0
+        elif [ -f "$tar_file" ]; then
+            local existing_size=$(ls -lh "$tar_file" | awk '{print $5}')
+            echo_info "   ✅ Already exists (uncompressed): $tar_file ($existing_size)"
+            echo_info "   Compressing it back..."
+            gzip -c "$tar_file" > "$compressed_file"
+            rm "$tar_file"
+            echo_info "   ✅ Compressed to: $(basename "$compressed_file")"
+            return 0
+        fi
+
+        # Check if file exists in temp-download directory
+        if [ -f "$temp_compressed" ]; then
+            local existing_size=$(ls -lh "$temp_compressed" | awk '{print $5}')
+            echo_info "   ✅ Found in temp-download: $(basename "$temp_compressed") ($existing_size)"
+            echo_info "   Moving to transfer directory..."
+            mv "$temp_compressed" "$compressed_file"
+            echo_info "   ✅ Moved to: $(basename "$compressed_file")"
+            return 0
+        fi
+
+        echo_info "   Downloading from GCS..."
+
+        # Download compressed file directly to transfer directory
         if ! $GSUTIL_PATH cp "gs://${BUCKET_NAME}/${filename}" "$compressed_file"; then
-            echo_error "Failed to download: $filename"
+            echo_error "   Failed to download: $filename"
             return 1
         fi
 
         local download_size=$(ls -lh "$compressed_file" | awk '{print $5}')
-        echo_info "   Downloaded: $download_size (compressed)"
+        echo_info "   Downloaded: $download_size"
 
-        # Decompress
-        echo_info "   🗜️  Decompressing..."
-        gunzip "$compressed_file"
-
-        local uncompressed_size=$(ls -lh "$tar_file" | awk '{print $5}')
-        echo_info "   Uncompressed: $uncompressed_size"
-
-        # Move to transfer directory
-        mv "$tar_file" "$final_file"
-
-        # Check if file needs chunking
-        if chunk_file "$final_file"; then
-            echo_info "   ✂️  File chunked into pieces"
+        # Check if compressed file needs chunking (for files >20GB compressed)
+        local file_size=$(stat -f%z "$compressed_file" 2>/dev/null || stat -c%s "$compressed_file" 2>/dev/null)
+        if [ "$file_size" -gt "$CHUNK_SIZE_BYTES" ]; then
+            echo_info "   ✂️  Compressed file is >20GB, chunking..."
+            if chunk_file "$compressed_file"; then
+                echo_info "   ✂️  File chunked into pieces"
+            fi
         fi
 
-        echo_success "   ✅ Ready for transfer: $(basename "$final_file")"
+        echo_success "   ✅ Ready: $(basename "$compressed_file")"
         return 0
     }
 
@@ -487,25 +509,21 @@ prepare_runpod_transfer() {
         fi
     }
 
-    # Download all images with caffeinate
-    echo_info "🔄 Starting downloads with caffeinate..."
+    # Download all images
+    echo_info "🔄 Starting downloads..."
     echo ""
 
-    run_with_caffeinate bash -c '
-        success_count=0
-        total_size=0
+    success_count=0
+    for i in "${!image_files[@]}"; do
+        index=$((i + 1))
+        if download_and_process_image "${image_files[i]}" "${image_names[i]}" "$index"; then
+            success_count=$((success_count + 1))
+        fi
+        echo ""
+    done
 
-        for i in "${!image_files[@]}"; do
-            index=$((i + 1))
-            if download_and_process_image "${image_files[i]}" "${image_names[i]}" "$index"; then
-                success_count=$((success_count + 1))
-            fi
-            echo ""
-        done
-
-        echo_info "📊 Download Summary:"
-        echo_info "   Successfully processed: $success_count/'$total_images' images"
-    '
+    echo_info "📊 Download Summary:"
+    echo_info "   Successfully processed: $success_count/$total_images images"
 
     # Copy deployment documentation
     echo_info "📚 Adding deployment documentation..."
@@ -516,8 +534,29 @@ prepare_runpod_transfer() {
         echo_info "   ✅ Added: RUNPOD_DEPLOYMENT_GUIDE.md"
     fi
 
-    # Create load script
-    create_load_script "$transfer_dir"
+    # Create simple load script for H100 environment
+    cat > "${transfer_dir}/load_images.sh" << 'EOF'
+#!/bin/bash
+
+# Load Docker images on H100 environment
+
+echo "Loading Docker images..."
+
+for file in *.tar.gz; do
+    if [ -f "$file" ]; then
+        echo "Processing $file..."
+        # Decompress and load
+        gunzip -c "$file" | docker load
+        echo "Loaded $file"
+    fi
+done
+
+echo "All images loaded!"
+docker images | grep -E "(hirag|rag-)"
+EOF
+
+    chmod +x "${transfer_dir}/load_images.sh"
+    echo_info "   ✅ Added: load_images.sh"
 
     # Create quick start script
     cat > "${transfer_dir}/quick_start.sh" << 'EOF'
