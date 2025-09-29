@@ -364,11 +364,11 @@ class TranscriptionService:
             # Read audio file
             async with aiofiles.open(audio_file_path, 'rb') as f:
                 audio_content = await f.read()
-            
+
             # Prepare multipart form data
             data = aiohttp.FormData()
             data.add_field('file', audio_content, filename=filename, content_type='audio/*')
-            
+
             # Call Whisper service
             async with aiohttp.ClientSession() as session:
                 async with session.post(

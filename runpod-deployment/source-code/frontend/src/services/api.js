@@ -62,8 +62,10 @@ export const api = {
 
   async getChatSessions(userId) {
     try {
-      const response = await fetch(`${API_BASE_URL}/api/chat/sessions?user_id=${userId}`);
-      return response.json();
+      // Note: This endpoint is not yet implemented in the API
+      // For now, return empty sessions list
+      console.warn('Get chat sessions endpoint not implemented, returning empty list');
+      return { success: true, sessions: [] };
     } catch (error) {
       console.error('Get chat sessions failed:', error);
       return { success: false, error: error.message };
@@ -83,18 +85,17 @@ export const api = {
   // Chat message endpoint
   async sendChatMessage(sessionId, content, useRag = true, files = []) {
     try {
-      const formData = new FormData();
-      formData.append('content', content);
-      formData.append('use_rag', useRag);
-
-      // Add files if any
-      files.forEach(file => {
-        formData.append('files', file);
-      });
+      const requestBody = {
+        content: content,
+        include_context: useRag
+      };
 
       const response = await fetch(`${API_BASE_URL}/api/chat/${sessionId}/message`, {
         method: 'POST',
-        body: formData,
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(requestBody),
       });
       return response.json();
     } catch (error) {

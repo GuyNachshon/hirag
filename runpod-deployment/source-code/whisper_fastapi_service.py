@@ -5,6 +5,7 @@ import io
 import logging
 import tempfile
 import time
+import base64
 from pathlib import Path
 from typing import Optional, List, Dict, Any
 
@@ -79,7 +80,8 @@ async def health_check():
 
 @app.post("/transcribe")
 async def transcribe_audio(
-    file: UploadFile = File(...),
+    file: UploadFile = File(None),
+    audio_data: Optional[str] = Form(None),
     engine: str = Form("faster-whisper"),
     model: Optional[str] = Form(None),
     language: str = Form("he"),
@@ -111,12 +113,10 @@ async def transcribe_audio(
         )
 
     try:
-        # Save uploaded file temporarily
-        file_extension = Path(file.filename).suffix.lower()
-        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as temp_file:
-            content = await file.read()
-            temp_file.write(content)
-            temp_file_path = temp_file.name
+        # Read uploaded file content and encode as base64
+        import base64
+        content = await file.read()
+        audio_base64 = base64.b64encode(content).decode('utf-8')
 
         try:
             # Load appropriate model
@@ -126,7 +126,7 @@ async def transcribe_audio(
 
             # Prepare transcription arguments (based on Ivrit-AI logic)
             transcribe_args = {
-                'blob': temp_file_path,
+                'blob': audio_base64,
                 'language': language,
                 'diarize': diarize
             }
@@ -158,9 +158,23 @@ async def transcribe_audio(
 
                 transcription_segments = []
                 for segment in segments_stream:
-                    # Convert dataclass to dict if needed
+                    # Convert segment and nested objects to dict
+                    seg_dict = {}
                     if hasattr(segment, '__dict__'):
-                        seg_dict = segment.__dict__
+                        for key, value in segment.__dict__.items():
+                            if hasattr(value, '__dict__'):
+                                # Convert nested objects (like Word) to dict
+                                seg_dict[key] = value.__dict__
+                            elif isinstance(value, list):
+                                # Handle lists of objects (like words)
+                                seg_dict[key] = []
+                                for item in value:
+                                    if hasattr(item, '__dict__'):
+                                        seg_dict[key].append(item.__dict__)
+                                    else:
+                                        seg_dict[key].append(item)
+                            else:
+                                seg_dict[key] = value
                     else:
                         seg_dict = segment
                     transcription_segments.append(seg_dict)
@@ -182,8 +196,8 @@ async def transcribe_audio(
             })
 
         finally:
-            # Clean up temp file
-            Path(temp_file_path).unlink(missing_ok=True)
+            # No cleanup needed since we don't create temp files
+            pass
 
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
