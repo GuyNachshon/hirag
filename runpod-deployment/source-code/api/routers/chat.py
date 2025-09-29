@@ -1,6 +1,7 @@
 from fastapi import APIRouter, HTTPException, Depends, UploadFile, File
 from typing import List, Optional
 import uuid
+from datetime import datetime
 
 from ..models import (
     SessionCreateRequest, SessionCreateResponse, ChatSession,
@@ -116,18 +117,18 @@ async def send_message(
         if not user_message:
             raise HTTPException(status_code=500, detail="Failed to save user message")
         
-        # Generate RAG-enhanced response if requested
+        # Get conversation history
+        conversation_history = chat_service.get_messages(session_id)[:-1]  # Exclude the message we just added
+
+        # Generate response based on include_context flag
         if request.include_context:
-            # Get conversation history
-            conversation_history = chat_service.get_messages(session_id)[:-1]  # Exclude the message we just added
-            
             # Generate response using RAG
             response = await rag_service.generate_response(
                 session_id=session_id,
                 user_message=request.content,
                 conversation_history=conversation_history
             )
-            
+
             # Save assistant response to session
             assistant_message = chat_service.add_message(
                 session_id=session_id,
@@ -135,18 +136,35 @@ async def send_message(
                 content=response.content,
                 context_used=response.context_sources
             )
-            
+
             return response
         else:
-            # Simple echo response without RAG
+            # Call LLM directly without RAG context
+            import time
+            start_time = time.time()
+
+            # Construct simple prompt with conversation history
+            prompt = rag_service._construct_prompt(request.content, "", conversation_history)
+            llm_response = await rag_service._call_vllm(prompt)
+
+            processing_time = time.time() - start_time
+
             response = ChatMessageResponse(
                 message_id=str(uuid.uuid4()),
-                content="Message received (no RAG processing requested)",
-                timestamp=user_message.timestamp,
+                content=llm_response,
+                timestamp=datetime.now(),
                 context_sources=None,
-                processing_time=0.0
+                processing_time=processing_time
             )
-            
+
+            # Save assistant response to session
+            assistant_message = chat_service.add_message(
+                session_id=session_id,
+                role=MessageRole.ASSISTANT,
+                content=response.content,
+                context_used=None
+            )
+
             return response
             
     except HTTPException:
