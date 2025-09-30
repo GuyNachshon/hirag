@@ -33,11 +33,14 @@ export const useChatStore = defineStore('chat', () => {
     try {
       error.value = null
       const response = await api.createChatSession(userId.value, title)
-      
+
       if (response.success !== false && response.session_id) {
         currentSessionId.value = response.session_id
-        messages.value = []
-        hasMessageBeenSent.value = false
+        // Don't reset messages or hasMessageBeenSent if we already have messages
+        // (this happens when creating session during first message send)
+        if (messages.value.length === 0) {
+          hasMessageBeenSent.value = false
+        }
         await loadSessions()
         return response.session_id
       } else {
