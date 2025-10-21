@@ -18,7 +18,11 @@ RUN apt update && apt install -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Install Python packages (based on Ivrit-AI requirements)
+# Pin torch/torchvision to prevent version conflicts
 RUN pip install --no-cache-dir \
+    torch==2.4.1 \
+    torchvision==0.19.1 \
+    torchaudio==2.4.1 \
     ivrit==0.1.2 \
     fastapi==0.104.1 \
     uvicorn==0.24.0 \
@@ -26,6 +30,12 @@ RUN pip install --no-cache-dir \
     librosa \
     numpy \
     requests
+
+# Reinstall torch/torchvision to fix any version conflicts from ivrit
+RUN pip install --no-cache-dir --force-reinstall --no-deps \
+    torch==2.4.1 \
+    torchvision==0.19.1 \
+    torchaudio==2.4.1
 
 # Environment variables (offline mode disabled for downloads)
 ENV PYTHONDONTWRITEBYTECODE=1
@@ -39,6 +49,7 @@ ENV MODEL_NAME=ivrit-ai/whisper-large-v3-ct2
 RUN python3 -c 'import faster_whisper; m = faster_whisper.WhisperModel("ivrit-ai/whisper-large-v3-turbo-ct2")'
 RUN python3 -c 'import faster_whisper; m = faster_whisper.WhisperModel("ivrit-ai/whisper-large-v3-ct2")'
 RUN python3 -c 'import pyannote.audio; p = pyannote.audio.Pipeline.from_pretrained("ivrit-ai/pyannote-speaker-diarization-3.1")'
+RUN python3 -c 'import pyannote.audio; p = pyannote.audio.Pipeline.from_pretrained("ivrit-ai/pyannote-segmentation-3.0")'
 RUN python3 -c 'from speechbrain.inference.speaker import EncoderClassifier; EncoderClassifier.from_hparams(source="speechbrain/spkrec-ecapa-voxceleb")'
 
 # Enable offline mode after downloads
