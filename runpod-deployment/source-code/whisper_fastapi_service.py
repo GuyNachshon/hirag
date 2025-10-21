@@ -113,10 +113,16 @@ async def transcribe_audio(
         )
 
     try:
-        # Read uploaded file content and encode as base64
-        import base64
+        # Save uploaded file to temporary location with proper extension
+        import tempfile
+        from pathlib import Path
+
         content = await file.read()
-        audio_base64 = base64.b64encode(content).decode('utf-8')
+        file_extension = Path(file.filename or "audio.wav").suffix or ".wav"
+
+        with tempfile.NamedTemporaryFile(delete=False, suffix=file_extension) as tmp_file:
+            tmp_file.write(content)
+            tmp_file_path = tmp_file.name
 
         try:
             # Load appropriate model
@@ -124,9 +130,9 @@ async def transcribe_audio(
 
             start_time = time.time()
 
-            # Prepare transcription arguments (based on Ivrit-AI logic)
+            # Prepare transcription arguments using file path instead of blob
             transcribe_args = {
-                'blob': audio_base64,
+                'path': tmp_file_path,
                 'language': language,
                 'diarize': diarize
             }
@@ -196,8 +202,11 @@ async def transcribe_audio(
             })
 
         finally:
-            # No cleanup needed since we don't create temp files
-            pass
+            # Cleanup temporary file
+            try:
+                os.unlink(tmp_file_path)
+            except:
+                pass
 
     except Exception as e:
         logger.error(f"Transcription failed: {e}")
