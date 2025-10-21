@@ -146,16 +146,28 @@ async def transcribe_audio(
                 # For diarization, get complete result
                 result = whisper_model.transcribe(**transcribe_args)
                 segments = result.get('segments', [])
-                # Convert segments to dict format
-                transcription_segments = [
-                    {
-                        'text': seg.get('text', ''),
-                        'start': seg.get('start', 0),
-                        'end': seg.get('end', 0),
-                        'speaker': seg.get('speaker', 'SPEAKER_00')
-                    }
-                    for seg in segments
-                ]
+                # Convert segments to dict format (segments are objects when diarization is enabled)
+                transcription_segments = []
+                for seg in segments:
+                    # Check if seg is a dict or an object
+                    if hasattr(seg, '__dict__'):
+                        # It's an object, access attributes directly
+                        seg_dict = {
+                            'text': getattr(seg, 'text', ''),
+                            'start': getattr(seg, 'start', 0),
+                            'end': getattr(seg, 'end', 0),
+                            'speaker': getattr(seg, 'speaker', 'SPEAKER_00')
+                        }
+                    else:
+                        # It's a dict, use .get()
+                        seg_dict = {
+                            'text': seg.get('text', ''),
+                            'start': seg.get('start', 0),
+                            'end': seg.get('end', 0),
+                            'speaker': seg.get('speaker', 'SPEAKER_00')
+                        }
+                    transcription_segments.append(seg_dict)
+
                 full_text = ' '.join([seg['text'] for seg in transcription_segments])
             else:
                 # For regular transcription, use streaming
