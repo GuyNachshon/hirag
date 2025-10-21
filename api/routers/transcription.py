@@ -1,5 +1,5 @@
-from fastapi import APIRouter, HTTPException, Depends, File, UploadFile
-from typing import Union
+from fastapi import APIRouter, HTTPException, Depends, File, UploadFile, Form
+from typing import Union, Optional
 import tempfile
 import os
 from pathlib import Path
@@ -19,13 +19,23 @@ def get_transcription_service() -> TranscriptionService:
 @router.post("/transcribe", response_model=Union[TranscriptionResponse, TranscriptionErrorResponse])
 async def transcribe_audio(
     file: UploadFile = File(..., description="Audio file to transcribe"),
+    enable_diarization: bool = Form(True, description="Enable speaker diarization (enabled by default)"),
+    identify_speakers: bool = Form(False, description="Use LLM to identify speaker names from conversation"),
+    language: str = Form("he", description="Language code (e.g., 'he' for Hebrew, 'en' for English)"),
     service: TranscriptionService = Depends(get_transcription_service)
 ):
     """
-    Transcribe audio file using Hebrew-optimized Whisper
-    
+    Transcribe audio file using Hebrew-optimized Whisper with speaker diarization and identification
+
     Supported formats: wav, mp3, m4a, flac, ogg, aac, webm
     Maximum file size: 100MB
+
+    Features:
+    - Diarization: ENABLED BY DEFAULT - Identifies different speakers in the audio and labels segments
+      accordingly (SPEAKER_00, SPEAKER_01, etc.). Set enable_diarization=false to disable.
+    - Speaker Identification: Optional LLM-based feature that extracts speaker names if they introduce
+      themselves in the conversation (e.g., "Hi, I'm Sarah" → maps SPEAKER_00 to "Sarah")
+      Set identify_speakers=true to enable.
     """
     
     # Validate file type
@@ -65,10 +75,16 @@ async def transcribe_audio(
         content = await file.read()
         temp_file.write(content)
         temp_file.close()
-        
-        # Transcribe audio
-        result = await service.transcribe_audio(temp_file.name, file.filename or "audio")
-        
+
+        # Transcribe audio with diarization and speaker identification if requested
+        result = await service.transcribe_audio(
+            temp_file.name,
+            file.filename or "audio",
+            enable_diarization=enable_diarization,
+            identify_speakers=identify_speakers,
+            language=language
+        )
+
         return result
         
     except Exception as e:

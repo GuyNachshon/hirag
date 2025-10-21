@@ -344,31 +344,134 @@ class RAGService:
 
 class TranscriptionService:
     """Service for audio transcription using Whisper"""
-    
+
     def __init__(self, config: Dict[str, Any]):
         self.config = config
         self.whisper_config = config.get('whisper', {})
         self.base_url = self.whisper_config.get('base_url', 'http://rag-whisper:8004')
         self.logger = get_logger()
+
+    async def _identify_speakers_with_llm(self, segments: List[TranscriptionSegment]) -> Optional[Dict[str, str]]:
+        """
+        Use LLM to identify speaker names from conversation content
+
+        Args:
+            segments: List of transcription segments with speaker labels
+
+        Returns:
+            Dictionary mapping speaker labels to names (e.g., {"SPEAKER_00": "Sarah"})
+            or None if identification fails or no names found
+        """
+        try:
+            # Check if vLLM is configured
+            vllm_config = self.config.get('VLLM', {})
+            if not vllm_config:
+                self.logger.main_logger.warning("vLLM not configured, skipping speaker identification")
+                return None
+
+            vllm_api_key = vllm_config.get('api_key', 0)
+            vllm_url = vllm_config.get('llm', {}).get('base_url', 'http://localhost:8000/v1')
+            model = vllm_config.get('llm', {}).get('model', 'model')
+
+            # Format conversation for LLM
+            conversation = []
+            for seg in segments:
+                speaker = seg.speaker or "UNKNOWN"
+                conversation.append(f"[{speaker}] ({seg.start:.1f}s-{seg.end:.1f}s): {seg.text}")
+
+            conversation_text = "\n".join(conversation)
+
+            # Create prompt for speaker identification
+            prompt = f"""Analyze the following conversation transcript and identify if any speakers introduce themselves by name.
+
+Conversation:
+{conversation_text}
+
+Task: Extract the real names of speakers if they introduce themselves (e.g., "Hi, I'm Sarah", "This is David speaking", "My name is...").
+
+Respond ONLY with a JSON object mapping speaker IDs to names. If a speaker doesn't introduce themselves, don't include them.
+Format: {{"SPEAKER_00": "Name1", "SPEAKER_01": "Name2"}}
+
+If no speakers introduce themselves, respond with: {{}}
+
+JSON Response:"""
+
+            # Call vLLM
+            client = AsyncOpenAI(
+                api_key=str(vllm_api_key),
+                base_url=vllm_url
+            )
+
+            response = await client.chat.completions.create(
+                model=model,
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.1,  # Low temperature for more deterministic output
+                max_tokens=500
+            )
+
+            llm_response = response.choices[0].message.content.strip()
+            self.logger.main_logger.info(f"LLM speaker identification response: {llm_response}")
+
+            # Parse JSON response
+            import json
+            import re
+
+            # Try to extract JSON from response (handle cases where LLM adds explanation)
+            json_match = re.search(r'\{[^}]*\}', llm_response)
+            if json_match:
+                speaker_names = json.loads(json_match.group())
+                if speaker_names:
+                    self.logger.main_logger.info(f"Identified speakers: {speaker_names}")
+                    return speaker_names
+                else:
+                    self.logger.main_logger.info("No speaker names identified from conversation")
+                    return None
+            else:
+                self.logger.main_logger.warning(f"Could not parse JSON from LLM response: {llm_response}")
+                return None
+
+        except Exception as e:
+            self.logger.main_logger.error(f"Speaker identification failed: {e}")
+            return None
     
-    async def transcribe_audio(self, audio_file_path: str, filename: str) -> TranscriptionResponse:
-        """Transcribe audio file using Whisper service"""
+    async def transcribe_audio(
+        self,
+        audio_file_path: str,
+        filename: str,
+        enable_diarization: bool = True,
+        identify_speakers: bool = False,
+        language: str = "he"
+    ) -> TranscriptionResponse:
+        """
+        Transcribe audio file using Whisper service with diarization and speaker identification
+
+        Args:
+            audio_file_path: Path to audio file
+            filename: Original filename
+            enable_diarization: Enable speaker diarization (enabled by default)
+            identify_speakers: Use LLM to identify speaker names from conversation (requires diarization)
+            language: Language code (default: "he" for Hebrew)
+        """
         import aiofiles
         import aiohttp
-        
+
         start_time = time.time()
-        
-        self.logger.main_logger.info(f"Starting transcription of {filename}")
-        
+
+        self.logger.main_logger.info(
+            f"Starting transcription of {filename} (diarization: {enable_diarization})"
+        )
+
         try:
             # Read audio file
             async with aiofiles.open(audio_file_path, 'rb') as f:
                 audio_content = await f.read()
-            
+
             # Prepare multipart form data
             data = aiohttp.FormData()
             data.add_field('file', audio_content, filename=filename, content_type='audio/*')
-            
+            data.add_field('language', language)
+            data.add_field('diarize', str(enable_diarization).lower())
+
             # Call Whisper service
             async with aiohttp.ClientSession() as session:
                 async with session.post(
@@ -378,19 +481,46 @@ class TranscriptionService:
                 ) as response:
                     if response.status == 200:
                         result = await response.json()
-                        
+
                         processing_time = time.time() - start_time
-                        
+
                         # Convert segments to our model
                         segments = [
                             TranscriptionSegment(
                                 start=seg['start'],
                                 end=seg['end'],
-                                text=seg['text']
+                                text=seg['text'],
+                                speaker=seg.get('speaker')  # Include speaker if present
                             )
                             for seg in result.get('segments', [])
                         ]
-                        
+
+                        # Extract speaker information if diarization was enabled
+                        speakers = None
+                        num_speakers = None
+                        if enable_diarization and segments:
+                            unique_speakers = list(set(
+                                seg.speaker for seg in segments if seg.speaker is not None
+                            ))
+                            if unique_speakers:
+                                speakers = sorted(unique_speakers)
+                                num_speakers = len(speakers)
+
+                        # Identify speaker names using LLM if requested
+                        speaker_names = None
+                        speaker_identification_attempted = False
+                        if identify_speakers and enable_diarization and segments:
+                            self.logger.main_logger.info("Attempting speaker identification with LLM...")
+                            speaker_identification_attempted = True
+                            speaker_names = await self._identify_speakers_with_llm(segments)
+
+                            # Update segment speaker labels with identified names
+                            if speaker_names:
+                                for seg in segments:
+                                    if seg.speaker and seg.speaker in speaker_names:
+                                        # Keep original speaker ID but we'll provide mapping
+                                        pass  # Don't modify speaker field, just provide mapping
+
                         transcription_response = TranscriptionResponse(
                             success=True,
                             text=result.get('text', ''),
@@ -398,6 +528,11 @@ class TranscriptionService:
                             language_probability=result.get('language_probability', 0.0),
                             duration=result.get('duration', 0.0),
                             segments=segments,
+                            diarization_enabled=enable_diarization,
+                            speakers=speakers,
+                            num_speakers=num_speakers,
+                            speaker_names=speaker_names,
+                            speaker_identification_attempted=speaker_identification_attempted,
                             message=f"Transcription completed in {processing_time:.2f}s"
                         )
                         

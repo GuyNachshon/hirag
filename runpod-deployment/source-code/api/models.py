@@ -93,6 +93,7 @@ class TranscriptionSegment(BaseModel):
     start: float
     end: float
     text: str
+    speaker: Optional[str] = None  # Speaker label when diarization is enabled
 
 class TranscriptionResponse(BaseModel):
     success: bool
@@ -101,6 +102,11 @@ class TranscriptionResponse(BaseModel):
     language_probability: float
     duration: float
     segments: List[TranscriptionSegment]
+    diarization_enabled: Optional[bool] = True  # Whether diarization was used (enabled by default)
+    speakers: Optional[List[str]] = None  # List of unique speakers when diarization is enabled
+    num_speakers: Optional[int] = None  # Number of speakers detected
+    speaker_names: Optional[Dict[str, str]] = None  # Mapping of SPEAKER_XX to identified names (e.g., {"SPEAKER_00": "Sarah", "SPEAKER_01": "David"})
+    speaker_identification_attempted: Optional[bool] = False  # Whether LLM-based speaker identification was attempted
     message: Optional[str] = None
 
 class TranscriptionErrorResponse(BaseModel):
