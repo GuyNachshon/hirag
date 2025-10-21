@@ -48,8 +48,8 @@ ENV MODEL_NAME=ivrit-ai/whisper-large-v3-ct2
 # Pre-download models (with internet access)
 RUN python3 -c 'import faster_whisper; m = faster_whisper.WhisperModel("ivrit-ai/whisper-large-v3-turbo-ct2")'
 RUN python3 -c 'import faster_whisper; m = faster_whisper.WhisperModel("ivrit-ai/whisper-large-v3-ct2")'
+# Diarization pipeline automatically downloads segmentation model as dependency
 RUN python3 -c 'import pyannote.audio; p = pyannote.audio.Pipeline.from_pretrained("ivrit-ai/pyannote-speaker-diarization-3.1")'
-RUN python3 -c 'import pyannote.audio; p = pyannote.audio.Pipeline.from_pretrained("ivrit-ai/pyannote-segmentation-3.0")'
 RUN python3 -c 'from speechbrain.inference.speaker import EncoderClassifier; EncoderClassifier.from_hparams(source="speechbrain/spkrec-ecapa-voxceleb")'
 
 # Enable offline mode after downloads
