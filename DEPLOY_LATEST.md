@@ -44,25 +44,56 @@ git pull origin update-ui-gran
 
 ### 2. Rebuild Frontend
 
-```bash
-cd ~/hirag/frontend
-npm run build
+**IMPORTANT:** The frontend must be rebuilt with the correct API URL as a build argument, and the source code must be copied to `source-code/` directory first!
 
-# Stop and remove old container
+**CRITICAL:** The API URL MUST be the **external IP address** (not `rag-api:8080`) because the browser needs to connect from outside!
+
+```bash
+# Step 0: Get your external IP address
+curl -s ifconfig.me
+# OR check your cloud provider dashboard for the instance's public IP
+# Example: 34.72.116.231
+
+# Step 1: Copy updated frontend to source-code
+rm -rf ~/hirag/runpod-deployment/source-code/frontend
+cp -r ~/hirag/frontend ~/hirag/runpod-deployment/source-code/
+
+# Step 2: Copy updated API files
+cp -r ~/hirag/api/* ~/hirag/runpod-deployment/source-code/api/
+
+# Step 3: Rebuild frontend image with EXTERNAL API URL
+cd ~/hirag/runpod-deployment
+
+# ⚠️ REPLACE 34.72.116.231 WITH YOUR ACTUAL EXTERNAL IP ⚠️
+docker build \
+  -f dockerfiles/Dockerfile.frontend-nextjs \
+  --build-arg NEXT_PUBLIC_API_URL=http://34.72.116.231:8080 \
+  -t rag-frontend:latest .
+
+# Step 4: Stop and remove old container
 docker stop rag-frontend
 docker rm rag-frontend
 
-# Rebuild image
-docker build -t rag-frontend:latest .
-
-# Start new container (use your existing docker run command)
+# Step 5: Start new container with correct port mapping
+# CRITICAL: Map port 3000 (internal) to 8087 (external)
 docker run -d \
   --name rag-frontend \
   --network rag-network \
   -p 8087:3000 \
-  -e NEXT_PUBLIC_API_URL=http://rag-api:8080 \
+  -e PORT=3000 \
   rag-frontend:latest
+
+# Step 6: Verify it's working
+docker logs -f rag-frontend --tail 50
 ```
+
+**Why these specific settings?**
+- `--build-arg NEXT_PUBLIC_API_URL=http://YOUR_EXTERNAL_IP:8080` - **MUST be external IP!** The browser needs to reach the API from outside the Docker network
+- `-p 8087:3000` - Maps internal port 3000 to external port 8087
+- `-e PORT=3000` - Tells Next.js to listen on port 3000 internally
+- Source code MUST be in `source-code/` because that's what the Dockerfile expects
+
+**Common mistake:** Using `http://rag-api:8080` won't work! That's only accessible inside Docker network. The browser needs the public IP.
 
 ### 3. Update Backend Files (No rebuild needed - just restart)
 
