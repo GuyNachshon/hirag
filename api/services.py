@@ -742,13 +742,13 @@ class TranscriptionChatService:
 
         elif context_type == "folder":
             # Multiple transcripts
-            transcripts = (
-                db.query(Transcript)
-                .filter(Transcript.folder_id == context_id)
-                .filter(Transcript.user_id == user_id)
-                .filter(Transcript.status == "completed")
-                .all()
-            )
+            query = db.query(Transcript).filter(Transcript.user_id == user_id).filter(Transcript.status == "completed")
+
+            # Handle "all" folder (no folder filter) vs specific folder
+            if context_id != "all":
+                query = query.filter(Transcript.folder_id == context_id)
+
+            transcripts = query.all()
 
             if not transcripts:
                 raise ValueError("No transcripts found in folder")
@@ -764,7 +764,10 @@ class TranscriptionChatService:
                 f"total words: {total_words}, estimated tokens: {token_estimate}"
             )
 
-            if token_estimate < self.TOKEN_THRESHOLD_FOLDER:
+            # Same max context limit as single transcript
+            MAX_CONTEXT_TOKENS = 1500
+
+            if token_estimate < MAX_CONTEXT_TOKENS:
                 # Use all transcripts
                 self.logger.main_logger.info("Using full context strategy for folder")
                 context_parts = []
@@ -774,6 +777,25 @@ class TranscriptionChatService:
 
                 return {
                     "strategy": "full_context",
+                    "context": "\n\n---\n\n".join(context_parts),
+                    "sources": [t.id for t in transcripts],
+                    "segment_references": None
+                }
+            elif token_estimate < self.TOKEN_THRESHOLD_FOLDER:
+                # Truncate to fit
+                self.logger.main_logger.info("Using truncated context strategy for folder")
+                max_words = int(MAX_CONTEXT_TOKENS * 0.77)
+                words_per_transcript = max_words // len(transcripts)
+
+                context_parts = []
+                for t in transcripts:
+                    if t.full_text:
+                        words = t.full_text.split()
+                        truncated = " ".join(words[:words_per_transcript])
+                        context_parts.append(f"[Transcript: {t.title}] (truncated)\n{truncated}")
+
+                return {
+                    "strategy": "truncated_context",
                     "context": "\n\n---\n\n".join(context_parts),
                     "sources": [t.id for t in transcripts],
                     "segment_references": None
