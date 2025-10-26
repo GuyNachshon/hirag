@@ -17,7 +17,7 @@
    - **Model Specs**: GPT-OSS-20b supports 128k context length, so we can be generous with tokens
    - **Token Strategy**:
      - Chat: 12000 initial, 40000 max, reasoning_effort="low"
-     - Insights: 12000 initial, 24000 max, reasoning_effort="medium"
+     - Insights: 20000 initial, 40000 max, reasoning_effort="medium"
    - **Real-world Results**: 12000 tokens with reasoning_effort="low" should work on first attempt
    - **Reference**: https://huggingface.co/openai/gpt-oss-120b/discussions/67
    - This completely fixes the "LLM returned empty content" error
@@ -32,8 +32,9 @@
 3. **Insights Generation Endpoint** - `POST /api/transcription/{transcript_id}/insights`
    - Generates structured insights: summary, key points, action items, topics
    - Uses comprehensive Hebrew system prompt
-   - Caches results in database
-   - Now uses higher token limits (12000-24000) for better results
+   - Caches results in database `insights` column (NEW)
+   - Now uses higher token limits (20000-40000) for structured JSON output
+   - **Database migration required**: Run `migrate_add_insights.py` to add column
 
 4. **Improved Chat Responses**
    - Hybrid retry logic ensures responses are never empty
@@ -209,9 +210,18 @@ exit
 
 **Note**: These are needed for PDF export with RTL (Hebrew) support.
 
-### 4. Restart API Container
+### 4. Run Database Migration and Restart API
 
 ```bash
+# Enter API container
+docker exec -it rag-api bash
+
+# Run migration to add insights column
+python api/migrate_add_insights.py
+
+# Exit container
+exit
+
 # Restart API to pick up all code changes
 docker restart rag-api
 
@@ -219,7 +229,7 @@ docker restart rag-api
 docker logs -f rag-api --tail 100
 ```
 
-**Important**: Watch for any import errors related to the new dependencies.
+**Important**: Watch for any import errors related to the new dependencies. The migration should show "✓ Successfully added insights column" or "✓ Insights column already exists".
 
 ### 5. Verify Everything Works
 
