@@ -143,7 +143,7 @@ VLLM:
     model: "Qwen/Qwen3-Embedding-4B"
   llm:
     base_url: "http://rag-llm-server:8000/v1"  # LLM service container
-    model: "openai/gpt-oss-20b"
+    model: "/root/.cache/huggingface/models--openai--gpt-oss-20b/snapshots/6cee5e81ee83917806bbde320786a8fb61efebee"
 
 # HiRAG Configuration
 hirag:
