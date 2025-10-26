@@ -42,6 +42,7 @@
 
 1. **InsightsView - FULLY INTEGRATED**
    - ✅ Fixed mockInsights undefined error
+   - ✅ Fixed 401 Unauthorized error - now uses apiClient with auth headers
    - Real API integration with POST /api/transcription/{id}/insights
    - Loading state with spinner and "מייצר תובנות..." text
    - Error handling with retry button
@@ -269,11 +270,13 @@ curl http://localhost:8087/frontend-health
 
 ## What's Fixed
 
-1. ✅ **Empty LLM responses** - Hybrid retry logic with token doubling
+1. ✅ **Empty LLM responses** - Increased tokens to 12000/40000, hybrid retry logic
 2. ✅ **mockInsights error** - Full API integration in InsightsView
-3. ✅ **Loading indicators** - Already working, will be visible after deployment
-4. ✅ **Button hover colors** - Green/teal hover effects
-5. ✅ **PDF export** - Complete with RTL Hebrew support
+3. ✅ **Insights 401 error** - Now uses apiClient with proper auth headers
+4. ✅ **Markdown rendering** - Chat responses render bold, lists, code blocks (already in code)
+5. ✅ **Loading indicators** - Already working, will be visible after deployment
+6. ✅ **Button hover colors** - Green/teal hover effects
+7. ✅ **PDF export** - Complete with RTL Hebrew support
 
 ## Rollback Plan
 
