@@ -175,12 +175,17 @@ async def send_message(
         raise HTTPException(status_code=400, detail=str(e))
 
     except Exception as e:
+        import traceback
         processing_time = time.time() - start_time
+        tb = traceback.format_exc()
+        logger.main_logger.error(f"Chat message error: {e}")
+        logger.main_logger.error(f"Traceback: {tb}")
         logger.log_error(e, {
             "operation": "transcription_chat_message",
             "session_id": session_id,
             "user_id": current_user.id,
-            "processing_time": processing_time
+            "processing_time": processing_time,
+            "traceback": tb
         })
         raise HTTPException(
             status_code=500,
