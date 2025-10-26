@@ -794,6 +794,94 @@ def format_timestamp(seconds: float) -> str:
         return f"{minutes:02d}:{secs:02d}"
 
 
+@router.post("/{transcript_id}/insights")
+async def generate_insights(
+    transcript_id: str,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Generate AI insights for a transcript including:
+    - Summary
+    - Key points
+    - Action items
+    - Topics discussed
+    """
+    # Get transcript from database
+    transcript = db.query(Transcript).filter(
+        Transcript.id == transcript_id,
+        Transcript.user_id == current_user.id
+    ).first()
+
+    if not transcript:
+        raise HTTPException(status_code=404, detail="Transcript not found")
+
+    if transcript.status != "completed":
+        raise HTTPException(status_code=400, detail="Transcript not completed yet")
+
+    # Check if insights already generated and cached
+    if transcript.insights:
+        logger.main_logger.info(f"Returning cached insights for transcript {transcript_id}")
+        return transcript.insights
+
+    # Get transcription chat service for LLM access
+    from ..main import transcription_chat_service
+    if not transcription_chat_service:
+        raise HTTPException(status_code=503, detail="Chat service not available")
+
+    try:
+        logger.main_logger.info(f"Generating insights for transcript {transcript_id}")
+        start_time = time.time()
+
+        # Generate insights using LLM
+        insights = await transcription_chat_service.generate_response(
+            user_message="",  # Not needed for insights
+            context=transcript.full_text,
+            conversation_history=[],
+            quick_action_id="generate_insights"  # Special ID for insights generation
+        )
+
+        # Parse the insights (assuming structured markdown response)
+        insights_data = {
+            "summary": "",
+            "keyPoints": [],
+            "actionItems": [],
+            "topics": [],
+            "participants": transcript.speaker_labels or []
+        }
+
+        # Try to parse structured response
+        try:
+            import json
+            insights_data = json.loads(insights)
+        except:
+            # If not JSON, use the text as summary
+            insights_data["summary"] = insights
+
+        # Cache the insights
+        transcript.insights = insights_data
+        db.commit()
+
+        processing_time = time.time() - start_time
+        logger.log_performance(
+            operation="generate_insights",
+            duration=processing_time,
+            metadata={
+                "transcript_id": transcript_id,
+                "transcript_length": len(transcript.full_text)
+            }
+        )
+
+        return insights_data
+
+    except Exception as e:
+        logger.log_error(e, {
+            "operation": "generate_insights",
+            "transcript_id": transcript_id
+        })
+        raise HTTPException(status_code=500, detail=f"Failed to generate insights: {str(e)}")
+
+
 @router.get("/health")
 async def transcription_health():
     """Check transcription service health"""

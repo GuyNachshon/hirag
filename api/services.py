@@ -1109,8 +1109,44 @@ class TranscriptionChatService:
         # Create client
         client = AsyncOpenAI(api_key=str(api_key), base_url=base_url)
 
-        # Construct system prompt
-        system_prompt = """אתה עוזר AI המסייע למשתמשים לנתח תמלולי פגישות.
+        # Check if this is an insights generation request
+        if quick_action_id == "generate_insights":
+            system_prompt = """אתה מומחה לניתוח תמלולי שיחות ופגישות. תפקידך לייצר תובנות מעמיקות ומובנות.
+
+צור ניתוח מקיף של התמליל הבא בפורמט JSON המובנה הזה:
+
+{
+  "summary": "סיכום קצר ותמציתי של השיחה (2-3 משפטים)",
+  "keyPoints": [
+    "נקודת מפתח 1 - רעיון או החלטה חשובה",
+    "נקודת מפתח 2 - רעיון או החלטה חשובה",
+    "נקודת מפתח 3 - רעיון או החלטה חשובה"
+  ],
+  "actionItems": [
+    {
+      "task": "תיאור המשימה",
+      "assignee": "שם האחראי (אם צוין)",
+      "priority": "high/medium"
+    }
+  ],
+  "topics": ["נושא 1", "נושא 2", "נושא 3"],
+  "participants": []
+}
+
+הנחיות חשובות:
+- הסיכום צריך להיות תמציתי ומדויק
+- נקודות המפתח צריכות להיות הדברים החשובים ביותר שנאמרו
+- חלץ משימות מעקב ספציפיות שהוזכרו
+- זהה את הנושאים העיקריים שנדונו
+- החזר JSON תקין בלבד, ללא טקסט נוסף
+"""
+            messages = [
+                {"role": "system", "content": system_prompt},
+                {"role": "user", "content": f"נתח את התמליל הבא:\n\n{context}"}
+            ]
+        else:
+            # Regular chat system prompt
+            system_prompt = """אתה עוזר AI המסייע למשתמשים לנתח תמלולי פגישות.
 
 היכולות שלך:
 - סיכום פגישות וחילוץ נקודות מפתח
@@ -1127,25 +1163,25 @@ class TranscriptionChatService:
 - תמוך בעברית ובאנגלית באופן שווה
 """
 
-        # Build messages
-        messages = [{"role": "system", "content": system_prompt}]
+            # Build messages
+            messages = [{"role": "system", "content": system_prompt}]
 
-        # Add context
-        if context:
-            messages.append({
-                "role": "system",
-                "content": f"הקשר רלוונטי:\n\n{context}"
-            })
+            # Add context
+            if context:
+                messages.append({
+                    "role": "system",
+                    "content": f"הקשר רלוונטי:\n\n{context}"
+                })
 
-        # Add conversation history (last 5 messages)
-        for msg in conversation_history[-5:]:
-            messages.append({
-                "role": msg["role"],
-                "content": msg["content"]
-            })
+            # Add conversation history (last 5 messages)
+            for msg in conversation_history[-5:]:
+                messages.append({
+                    "role": msg["role"],
+                    "content": msg["content"]
+                })
 
-        # Add current user message
-        messages.append({"role": "user", "content": user_message})
+            # Add current user message
+            messages.append({"role": "user", "content": user_message})
 
         # Calculate safe max_tokens based on model's max length
         # Estimate input tokens (rough approximation: 1 token ≈ 4 characters)

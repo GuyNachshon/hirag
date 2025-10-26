@@ -600,12 +600,11 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
                   <Button
                     variant="ghost"
                     size="icon"
-                    className="h-12 w-12 rounded-full shadow-lg border border-border/60 bg-card hover:bg-muted/60 hover:scale-105 transition-all"
+                    className="h-12 w-12 rounded-full shadow-lg border border-border/60 bg-card hover:bg-muted/60 hover:scale-105 transition-all group"
                     onClick={() => setIsUploadModalOpen(true)}
                   >
-                    <AudioWaveform className="w-[20px] h-[20px]" strokeWidth={2.5} />
-                  </Button>
-                </TooltipTrigger>
+                    <AudioWaveform className="w-[20px] h-[20px] text-foreground group-hover:text-primary transition-colors" strokeWidth={2.5} />
+                  </Button>                </TooltipTrigger>
                 <TooltipContent>
                   <p>תמליל חדש</p>
                 </TooltipContent>
@@ -618,14 +617,14 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className={`h-10 w-10 rounded-full transition-all ${
+                      className={`h-10 w-10 rounded-full transition-all group ${
                         currentView === "transcript"
                           ? "bg-primary text-primary-foreground hover:bg-primary/90"
                           : "hover:bg-muted/40"
                       }`}
                       onClick={() => setCurrentView("transcript")}
                     >
-                      <Text className="w-[18px] h-[18px]" strokeWidth={2.5} />
+                      <Text className={`w-[18px] h-[18px] ${currentView === "transcript" ? "" : "text-foreground group-hover:text-primary transition-colors"}`} strokeWidth={2.5} />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
@@ -638,14 +637,14 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
                     <Button
                       variant="ghost"
                       size="icon"
-                      className={`h-10 w-10 rounded-full transition-all ${
+                      className={`h-10 w-10 rounded-full transition-all group ${
                         currentView === "insights"
                           ? "bg-primary text-primary-foreground hover:bg-primary/90"
                           : "hover:bg-muted/40"
                       }`}
                       onClick={() => setCurrentView("insights")}
                     >
-                      <Sparkles className="w-[18px] h-[18px]" strokeWidth={2.5} />
+                      <Sparkles className={`w-[18px] h-[18px] ${currentView === "insights" ? "" : "text-foreground group-hover:text-primary transition-colors"}`} strokeWidth={2.5} />
                     </Button>
                   </TooltipTrigger>
                   <TooltipContent>
