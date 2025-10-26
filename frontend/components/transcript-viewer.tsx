@@ -32,6 +32,7 @@ import {
   Loader2,
   AlertCircle,
   GripVertical,
+  FileDown,
 } from "lucide-react"
 import * as LucideIcons from "lucide-react"
 import Link from "next/link"
@@ -98,6 +99,9 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
   const [speakerCount, setSpeakerCount] = useState("2")
   const [tags, setTags] = useState("")
   const [quickActions, setQuickActions] = useState<QuickAction[]>([])
+  const [insights, setInsights] = useState<any>(null)
+  const [isLoadingInsights, setIsLoadingInsights] = useState(false)
+  const [insightsError, setInsightsError] = useState<string>("")
   const [chatSessionId, setChatSessionId] = useState<string | null>(null)
   const [rightPanelWidth, setRightPanelWidth] = useState(400) // Default width in pixels
   const [isResizing, setIsResizing] = useState(false)
@@ -222,6 +226,41 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
       handleSendMessage()
     }, 0)
   }
+
+  const fetchInsights = async () => {
+    if (!transcriptId || isLoadingInsights) return
+
+    setIsLoadingInsights(true)
+    setInsightsError("")
+
+    try {
+      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/transcription/${transcriptId}/insights`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      })
+
+      if (!response.ok) {
+        throw new Error(`Failed to generate insights: ${response.statusText}`)
+      }
+
+      const data = await response.json()
+      setInsights(data)
+    } catch (error) {
+      console.error("Failed to fetch insights:", error)
+      setInsightsError("נכשל ביצירת התובנות. אנא נסה שוב.")
+    } finally {
+      setIsLoadingInsights(false)
+    }
+  }
+
+  // Fetch insights when switching to insights view
+  useEffect(() => {
+    if (currentView === "insights" && !insights && !isLoadingInsights) {
+      fetchInsights()
+    }
+  }, [currentView])
 
   const folders = [
     { name: "All Transcripts", count: 24, icon: FileAudio },
@@ -379,107 +418,166 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
     )
   }
 
-  const InsightsView = () => (
-    <div className="max-w-4xl space-y-4">
-      <Card className="p-5 border-border/60 hover:border-border transition-colors">
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-lg bg-primary/8 flex items-center justify-center flex-shrink-0">
-            <MessageSquare className="w-[16px] h-[16px] text-primary" />
-          </div>
-          <div>
-            <h3 className="text-[14px] font-semibold text-foreground mb-2">סיכום</h3>
-            <p className="text-[13px] text-muted-foreground leading-relaxed">{mockInsights.summary}</p>
+  const InsightsView = () => {
+    // Loading state
+    if (isLoadingInsights) {
+      return (
+        <div className="flex-1 flex items-center justify-center p-12">
+          <div className="text-center space-y-3">
+            <Loader2 className="w-8 h-8 animate-spin text-primary mx-auto" />
+            <p className="text-[13px] text-muted-foreground">מייצר תובנות...</p>
           </div>
         </div>
-      </Card>
+      )
+    }
 
-      <Card className="p-5 border-border/60 hover:border-border transition-colors">
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-lg bg-primary/8 flex items-center justify-center flex-shrink-0">
-            <Lightbulb className="w-[16px] h-[16px] text-primary" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-[14px] font-semibold text-foreground mb-3">נקודות מפתח</h3>
-            <ul className="space-y-2.5">
-              {mockInsights.keyPoints.map((point, index) => (
-                <li key={index} className="flex gap-2.5 text-[13px] text-muted-foreground">
-                  <span className="leading-relaxed">{point}</span>
-                  <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0 mt-0.5 scale-x-[-1]" />
-                </li>
-              ))}
-            </ul>
-          </div>
+    // Error state
+    if (insightsError) {
+      return (
+        <div className="flex-1 flex items-center justify-center p-12">
+          <Card className="p-8 max-w-md text-center">
+            <AlertCircle className="w-12 h-12 mx-auto text-destructive mb-4" />
+            <h3 className="text-[16px] font-semibold text-foreground mb-2">שגיאה ביצירת תובנות</h3>
+            <p className="text-[13px] text-muted-foreground mb-4">{insightsError}</p>
+            <Button onClick={fetchInsights} variant="outline" size="sm">
+              נסה שוב
+            </Button>
+          </Card>
         </div>
-      </Card>
+      )
+    }
 
-      <Card className="p-5 border-border/60 hover:border-border transition-colors">
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-lg bg-primary/8 flex items-center justify-center flex-shrink-0">
-            <ListTodo className="w-[16px] h-[16px] text-primary" />
+    // No insights yet
+    if (!insights) {
+      return (
+        <div className="flex-1 flex items-center justify-center p-12">
+          <Card className="p-8 max-w-md text-center">
+            <Sparkles className="w-12 h-12 mx-auto text-primary mb-4" />
+            <h3 className="text-[16px] font-semibold text-foreground mb-2">אין תובנות עדיין</h3>
+            <p className="text-[13px] text-muted-foreground mb-4">לחץ על הכפתור ליצירת תובנות מהתמליל</p>
+            <Button onClick={fetchInsights} variant="default" size="sm">
+              <Sparkles className="w-4 h-4 ml-2" />
+              צור תובנות
+            </Button>
+          </Card>
+        </div>
+      )
+    }
+
+    return (
+      <div className="max-w-4xl space-y-4">
+        <Card className="p-5 border-border/60 hover:border-border transition-colors">
+          <div className="flex items-start gap-3">
+            <div className="w-9 h-9 rounded-lg bg-primary/8 flex items-center justify-center flex-shrink-0">
+              <MessageSquare className="w-[16px] h-[16px] text-primary" />
+            </div>
+            <div>
+              <h3 className="text-[14px] font-semibold text-foreground mb-2">סיכום</h3>
+              <p className="text-[13px] text-muted-foreground leading-relaxed">{insights.summary || "אין סיכום זמין"}</p>
+            </div>
           </div>
-          <div className="flex-1">
-            <h3 className="text-[14px] font-semibold text-foreground mb-3">פעולות מעקב</h3>
-            <div className="space-y-3">
-              {mockInsights.actionItems.map((item, index) => (
-                <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-muted/30">
-                  <div className="flex-1 min-w-0">
-                    <p className="text-[13px] font-medium text-foreground mb-2 leading-relaxed">{item.task}</p>
-                    <div className="flex items-center gap-1.5">
-                      <Badge variant="outline" className="text-[11px] h-5 px-2 font-medium">
-                        {item.assignee}
-                      </Badge>
-                      <Badge
-                        variant={item.priority === "high" ? "default" : "secondary"}
-                        className="text-[11px] h-5 px-2 font-medium"
-                      >
-                        {item.priority === "high" ? "גבוה" : "בינוני"}
-                      </Badge>
+        </Card>
+
+        {insights.keyPoints && insights.keyPoints.length > 0 && (
+          <Card className="p-5 border-border/60 hover:border-border transition-colors">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-primary/8 flex items-center justify-center flex-shrink-0">
+                <Lightbulb className="w-[16px] h-[16px] text-primary" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-[14px] font-semibold text-foreground mb-3">נקודות מפתח</h3>
+                <ul className="space-y-2.5">
+                  {insights.keyPoints.map((point: string, index: number) => (
+                    <li key={index} className="flex gap-2.5 text-[13px] text-muted-foreground">
+                      <span className="leading-relaxed">{point}</span>
+                      <ChevronRight className="w-3.5 h-3.5 text-primary flex-shrink-0 mt-0.5 scale-x-[-1]" />
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          </Card>
+        )}
+
+        {insights.actionItems && insights.actionItems.length > 0 && (
+          <Card className="p-5 border-border/60 hover:border-border transition-colors">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-primary/8 flex items-center justify-center flex-shrink-0">
+                <ListTodo className="w-[16px] h-[16px] text-primary" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-[14px] font-semibold text-foreground mb-3">פעולות מעקב</h3>
+                <div className="space-y-3">
+                  {insights.actionItems.map((item: any, index: number) => (
+                    <div key={index} className="flex items-start gap-3 p-3 rounded-lg bg-muted/30">
+                      <div className="flex-1 min-w-0">
+                        <p className="text-[13px] font-medium text-foreground mb-2 leading-relaxed">{item.task}</p>
+                        <div className="flex items-center gap-1.5">
+                          {item.assignee && (
+                            <Badge variant="outline" className="text-[11px] h-5 px-2 font-medium">
+                              {item.assignee}
+                            </Badge>
+                          )}
+                          {item.priority && (
+                            <Badge
+                              variant={item.priority === "high" ? "default" : "secondary"}
+                              className="text-[11px] h-5 px-2 font-medium"
+                            >
+                              {item.priority === "high" ? "גבוה" : "בינוני"}
+                            </Badge>
+                          )}
+                        </div>
+                      </div>
                     </div>
-                  </div>
+                  ))}
                 </div>
-              ))}
+              </div>
             </div>
-          </div>
-        </div>
-      </Card>
+          </Card>
+        )}
 
-      <Card className="p-5 border-border/60 hover:border-border transition-colors">
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-lg bg-primary/8 flex items-center justify-center flex-shrink-0">
-            <Users className="w-[16px] h-[16px] text-primary" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-[14px] font-semibold text-foreground mb-3">משתתפים</h3>
-            <div className="flex flex-wrap gap-2">
-              {mockInsights.participants.map((participant) => (
-                <Badge key={participant} variant="secondary" className="text-[12px] h-6 px-3 font-medium">
-                  {participant}
-                </Badge>
-              ))}
+        {insights.participants && insights.participants.length > 0 && (
+          <Card className="p-5 border-border/60 hover:border-border transition-colors">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-primary/8 flex items-center justify-center flex-shrink-0">
+                <Users className="w-[16px] h-[16px] text-primary" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-[14px] font-semibold text-foreground mb-3">משתתפים</h3>
+                <div className="flex flex-wrap gap-2">
+                  {insights.participants.map((participant: string) => (
+                    <Badge key={participant} variant="secondary" className="text-[12px] h-6 px-3 font-medium">
+                      {participant}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      </Card>
+          </Card>
+        )}
 
-      <Card className="p-5 border-border/60 hover:border-border transition-colors">
-        <div className="flex items-start gap-3">
-          <div className="w-9 h-9 rounded-lg bg-primary/8 flex items-center justify-center flex-shrink-0">
-            <FileText className="w-[16px] h-[16px] text-primary" />
-          </div>
-          <div className="flex-1">
-            <h3 className="text-[14px] font-semibold text-foreground mb-3">נושאים שנדונו</h3>
-            <div className="flex flex-wrap gap-2">
-              {mockInsights.topics.map((topic, index) => (
-                <Badge key={index} variant="outline" className="text-[12px] h-6 px-3 font-medium">
-                  {topic}
-                </Badge>
-              ))}
+        {insights.topics && insights.topics.length > 0 && (
+          <Card className="p-5 border-border/60 hover:border-border transition-colors">
+            <div className="flex items-start gap-3">
+              <div className="w-9 h-9 rounded-lg bg-primary/8 flex items-center justify-center flex-shrink-0">
+                <FileText className="w-[16px] h-[16px] text-primary" />
+              </div>
+              <div className="flex-1">
+                <h3 className="text-[14px] font-semibold text-foreground mb-3">נושאים שנדונו</h3>
+                <div className="flex flex-wrap gap-2">
+                  {insights.topics.map((topic: string, index: number) => (
+                    <Badge key={index} variant="outline" className="text-[12px] h-6 px-3 font-medium">
+                      {topic}
+                    </Badge>
+                  ))}
+                </div>
+              </div>
             </div>
-          </div>
-        </div>
-      </Card>
-    </div>
-  )
+          </Card>
+        )}
+      </div>
+    )
+  }
 
   // Loading state
   if (isLoading) {
@@ -594,6 +692,26 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
         <div className="absolute bottom-6 left-1/2 -translate-x-1/2 z-10">
           <TooltipProvider>
             <div className="flex items-center gap-3">
+              {/* Export PDF Button */}
+              <Tooltip>
+                <TooltipTrigger asChild>
+                  <Button
+                    variant="ghost"
+                    size="icon"
+                    className="h-12 w-12 rounded-full shadow-lg border border-border/60 bg-card hover:bg-muted/60 hover:scale-105 transition-all group"
+                    onClick={() => {
+                      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
+                      window.open(`${apiUrl}/api/transcription/${transcriptId}/export?format=pdf`, '_blank')
+                    }}
+                  >
+                    <FileDown className="w-[20px] h-[20px] text-foreground group-hover:text-primary transition-colors" strokeWidth={2.5} />
+                  </Button>
+                </TooltipTrigger>
+                <TooltipContent>
+                  <p>ייצא לPDF</p>
+                </TooltipContent>
+              </Tooltip>
+
               {/* New Transcript Button */}
               <Tooltip>
                 <TooltipTrigger asChild>

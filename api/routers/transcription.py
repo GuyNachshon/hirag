@@ -882,6 +882,198 @@ async def generate_insights(
         raise HTTPException(status_code=500, detail=f"Failed to generate insights: {str(e)}")
 
 
+@router.get("/{transcript_id}/export")
+async def export_transcript(
+    transcript_id: str,
+    format: str = "pdf",
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db)
+):
+    """
+    Export transcript to PDF format with full transcript, insights, and metadata.
+    Supports RTL (Hebrew) text formatting.
+    """
+    from fastapi.responses import StreamingResponse
+    from reportlab.lib.pagesizes import letter, A4
+    from reportlab.lib import colors
+    from reportlab.lib.units import inch
+    from reportlab.platypus import SimpleDocTemplate, Table, TableStyle, Paragraph, Spacer, PageBreak
+    from reportlab.lib.styles import getSampleStyleSheet, ParagraphStyle
+    from reportlab.lib.enums import TA_RIGHT, TA_CENTER
+    from reportlab.pdfbase import pdfmetrics
+    from reportlab.pdfbase.ttfonts import TTFont
+    from io import BytesIO
+    from datetime import datetime
+    import arabic_reshaper
+    from bidi.algorithm import get_display
+
+    if format != "pdf":
+        raise HTTPException(status_code=400, detail="Only PDF format is currently supported")
+
+    # Get transcript
+    transcript = db.query(Transcript).filter(
+        Transcript.id == transcript_id,
+        Transcript.user_id == current_user.id
+    ).first()
+
+    if not transcript:
+        raise HTTPException(status_code=404, detail="Transcript not found")
+
+    # Helper function for RTL text
+    def format_rtl(text):
+        """Format text for RTL display (Hebrew/Arabic)"""
+        if not text:
+            return ""
+        reshaped_text = arabic_reshaper.reshape(str(text))
+        return get_display(reshaped_text)
+
+    # Create PDF buffer
+    buffer = BytesIO()
+    doc = SimpleDocTemplate(buffer, pagesize=A4, rightMargin=72, leftMargin=72, topMargin=72, bottomMargin=18)
+
+    # Container for PDF elements
+    elements = []
+
+    # Try to register Hebrew font (DejaVu Sans has good Hebrew support)
+    # If font not available, will fall back to default
+    try:
+        # Note: In production, you'll need to include DejaVuSans.ttf in your deployment
+        pdfmetrics.registerFont(TTFont('Hebrew', '/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf'))
+        hebrew_font = 'Hebrew'
+    except:
+        # Fallback to Helvetica (limited Hebrew support)
+        hebrew_font = 'Helvetica'
+        logger.main_logger.warning("Hebrew font not found, using Helvetica (limited RTL support)")
+
+    # Define styles with RTL support
+    styles = getSampleStyleSheet()
+
+    title_style = ParagraphStyle(
+        'HebrewTitle',
+        parent=styles['Heading1'],
+        fontName=hebrew_font,
+        fontSize=24,
+        alignment=TA_RIGHT,
+        textColor=colors.HexColor('#0D9588'),
+        spaceAfter=12
+    )
+
+    heading_style = ParagraphStyle(
+        'HebrewHeading',
+        parent=styles['Heading2'],
+        fontName=hebrew_font,
+        fontSize=16,
+        alignment=TA_RIGHT,
+        textColor=colors.HexColor('#0D9588'),
+        spaceAfter=10
+    )
+
+    body_style = ParagraphStyle(
+        'HebrewBody',
+        parent=styles['BodyText'],
+        fontName=hebrew_font,
+        fontSize=11,
+        alignment=TA_RIGHT,
+        leading=16,
+        rightIndent=0,
+        leftIndent=0
+    )
+
+    # Title
+    title_text = format_rtl(transcript.title or "תמליל")
+    elements.append(Paragraph(title_text, title_style))
+    elements.append(Spacer(1, 0.2*inch))
+
+    # Metadata table
+    metadata = [
+        [format_rtl("תאריך:"), format_rtl(transcript.created_at.strftime("%d/%m/%Y %H:%M"))],
+        [format_rtl("משך:"), format_rtl(f"{transcript.duration or 0:.0f} שניות")],
+        [format_rtl("מספר דוברים:"), str(len(set([s.get('speaker_label', 'Unknown') for s in (transcript.segments or [])])))]
+    ]
+
+    metadata_table = Table(metadata, colWidths=[2*inch, 4*inch])
+    metadata_table.setStyle(TableStyle([
+        ('FONT', (0, 0), (-1, -1), hebrew_font, 10),
+        ('ALIGN', (0, 0), (-1, -1), 'RIGHT'),
+        ('VALIGN', (0, 0), (-1, -1), 'TOP'),
+        ('TEXTCOLOR', (0, 0), (0, -1), colors.HexColor('#666666')),
+        ('GRID', (0, 0), (-1, -1), 0.5, colors.HexColor('#E5E5E6')),
+        ('BACKGROUND', (0, 0), (0, -1), colors.HexColor('#F6F6F7')),
+        ('PADDING', (0, 0), (-1, -1), 8),
+    ]))
+    elements.append(metadata_table)
+    elements.append(Spacer(1, 0.4*inch))
+
+    # Insights section (if available)
+    if transcript.insights:
+        elements.append(Paragraph(format_rtl("תובנות"), heading_style))
+        elements.append(Spacer(1, 0.1*inch))
+
+        # Summary
+        if transcript.insights.get('summary'):
+            elements.append(Paragraph(format_rtl("סיכום:"), body_style))
+            elements.append(Paragraph(format_rtl(transcript.insights['summary']), body_style))
+            elements.append(Spacer(1, 0.15*inch))
+
+        # Key points
+        if transcript.insights.get('keyPoints'):
+            elements.append(Paragraph(format_rtl("נקודות מפתח:"), body_style))
+            for point in transcript.insights['keyPoints']:
+                elements.append(Paragraph(f"• {format_rtl(point)}", body_style))
+            elements.append(Spacer(1, 0.15*inch))
+
+        # Action items
+        if transcript.insights.get('actionItems'):
+            elements.append(Paragraph(format_rtl("פעולות מעקב:"), body_style))
+            for item in transcript.insights['actionItems']:
+                task_text = format_rtl(item.get('task', ''))
+                assignee = format_rtl(item.get('assignee', ''))
+                priority = format_rtl(item.get('priority', ''))
+                elements.append(Paragraph(f"• {task_text} ({assignee} - {priority})", body_style))
+            elements.append(Spacer(1, 0.15*inch))
+
+        elements.append(PageBreak())
+
+    # Full transcript
+    elements.append(Paragraph(format_rtl("תמליל מלא"), heading_style))
+    elements.append(Spacer(1, 0.2*inch))
+
+    # Add transcript segments
+    for segment in (transcript.segments or []):
+        speaker = format_rtl(segment.get('speaker_label', 'Unknown'))
+        start_time = segment.get('start', 0)
+        text = format_rtl(segment.get('text', ''))
+
+        # Format timestamp
+        mins = int(start_time // 60)
+        secs = int(start_time % 60)
+        timestamp = f"[{mins:02d}:{secs:02d}]"
+
+        # Create segment paragraph
+        segment_text = f"<b>{speaker}</b> {timestamp}<br/>{text}"
+        elements.append(Paragraph(segment_text, body_style))
+        elements.append(Spacer(1, 0.1*inch))
+
+    # Build PDF
+    try:
+        doc.build(elements)
+        buffer.seek(0)
+
+        # Return as downloadable file
+        filename = f"transcript_{transcript_id}_{datetime.now().strftime('%Y%m%d')}.pdf"
+        return StreamingResponse(
+            buffer,
+            media_type="application/pdf",
+            headers={"Content-Disposition": f"attachment; filename={filename}"}
+        )
+    except Exception as e:
+        logger.log_error(e, {
+            "operation": "export_pdf",
+            "transcript_id": transcript_id
+        })
+        raise HTTPException(status_code=500, detail=f"Failed to generate PDF: {str(e)}")
+
+
 @router.get("/health")
 async def transcription_health():
     """Check transcription service health"""

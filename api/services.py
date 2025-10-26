@@ -1083,6 +1083,149 @@ class TranscriptionChatService:
             )
             raise
 
+    async def _call_llm_with_retry(
+        self,
+        client,  # AsyncOpenAI client
+        model: str,
+        messages: List[Dict[str, Any]],
+        initial_max_tokens: int,
+        max_total_tokens: int,
+        temperature: float = 0.7,
+        max_retries: int = 3
+    ) -> str:
+        """
+        Call LLM with automatic retry logic for reasoning models.
+
+        GPT-OSS is a reasoning model that generates "thinking" tokens (reasoning_content)
+        before the final answer (content). If max_tokens is too low, all tokens are used
+        for reasoning and content is empty.
+
+        This wrapper automatically retries with doubled max_tokens when:
+        - Response content is empty
+        - finish_reason is "length" (hit token limit)
+
+        Args:
+            client: AsyncOpenAI client
+            model: Model name
+            messages: Chat messages
+            initial_max_tokens: Starting max_tokens value
+            max_total_tokens: Hard limit (safety cap)
+            temperature: Sampling temperature
+            max_retries: Maximum retry attempts
+
+        Returns:
+            Generated content string
+        """
+        import asyncio
+
+        max_tokens = initial_max_tokens
+
+        for attempt in range(max_retries):
+            try:
+                self.logger.main_logger.info(
+                    f"LLM call attempt {attempt + 1}/{max_retries} with max_tokens={max_tokens}"
+                )
+
+                response = await client.chat.completions.create(
+                    model=model,
+                    messages=messages,
+                    temperature=temperature,
+                    max_tokens=max_tokens,
+                    extra_body={
+                        "include_reasoning": False  # Skip chain-of-thought, return only final answer
+                    }
+                )
+
+                # Extract content
+                message = response.choices[0].message
+                content = message.content
+                finish_reason = response.choices[0].finish_reason
+
+                # Log response details
+                self.logger.main_logger.info(
+                    f"Response - finish_reason: {finish_reason}, "
+                    f"content_length: {len(content) if content else 0}, "
+                    f"has_reasoning: {hasattr(message, 'reasoning_content')}"
+                )
+
+                # Check if we need to retry due to token limit
+                if (content is None or content.strip() == "") and finish_reason == "length":
+                    if attempt < max_retries - 1:
+                        # Double the tokens for next attempt
+                        new_max_tokens = min(max_tokens * 2, max_total_tokens)
+
+                        if new_max_tokens > max_tokens:
+                            self.logger.main_logger.warning(
+                                f"Empty response due to token limit. Retrying with max_tokens={new_max_tokens}"
+                            )
+                            max_tokens = new_max_tokens
+                            continue
+                        else:
+                            self.logger.main_logger.error(
+                                f"Hit max_total_tokens limit ({max_total_tokens}), cannot retry"
+                            )
+                            break
+                    else:
+                        self.logger.main_logger.error(
+                            f"Max retries reached, still getting empty response"
+                        )
+                        break
+
+                # Fallback to reasoning_content if needed
+                if content is None and hasattr(message, 'reasoning_content') and message.reasoning_content:
+                    self.logger.main_logger.warning(
+                        "include_reasoning=false didn't work, extracting from reasoning_content"
+                    )
+                    reasoning = message.reasoning_content
+
+                    # Try to extract final answer
+                    answer_markers = [
+                        "\n\nתשובה:", "\n\nAnswer:", "\n\nסיכום:", "\n\nSummary:",
+                        "\n\nלסיכום,", "\n\nIn summary,", "\n\n---\n\n"
+                    ]
+
+                    final_answer = reasoning
+                    for marker in answer_markers:
+                        if marker in reasoning:
+                            final_answer = reasoning.split(marker, 1)[1].strip()
+                            self.logger.main_logger.info(f"Extracted answer after marker: {marker}")
+                            break
+
+                    # Truncate if too long
+                    if len(final_answer) > 2000:
+                        self.logger.main_logger.info("Reasoning too long, taking last 1500 chars")
+                        final_answer = "...\n\n" + final_answer[-1500:]
+
+                    content = final_answer
+
+                # Return content if we have it
+                if content and content.strip():
+                    self.logger.main_logger.info(
+                        f"Successfully generated response with {len(content)} characters"
+                    )
+                    return content
+
+                # If we got here with empty content but no length limit, it's an error
+                if finish_reason != "length":
+                    self.logger.main_logger.warning(
+                        f"Empty response with finish_reason={finish_reason}, not retrying"
+                    )
+                    break
+
+            except Exception as e:
+                import traceback
+                self.logger.main_logger.error(
+                    f"Error in LLM call attempt {attempt + 1}: {e}\n{traceback.format_exc()}"
+                )
+                if attempt == max_retries - 1:
+                    raise
+                # Wait a bit before retry
+                await asyncio.sleep(1)
+
+        # All retries failed
+        self.logger.main_logger.error("All retry attempts failed, returning error message")
+        return "מצטער, לא הצלחתי ליצור תשובה. אנא נסה שוב."
+
     async def generate_response(
         self,
         user_message: str,
@@ -1183,76 +1326,32 @@ class TranscriptionChatService:
             # Add current user message
             messages.append({"role": "user", "content": user_message})
 
-        # Calculate safe max_tokens based on model's max length
-        # Estimate input tokens (rough approximation: 1 token ≈ 4 characters)
-        estimated_input_chars = sum(len(str(msg.get("content", ""))) for msg in messages)
-        estimated_input_tokens = estimated_input_chars // 4
-
-        # Model max length is 4096, leave room for response
-        model_max_length = 4096
-        max_response_tokens = max(512, model_max_length - estimated_input_tokens - 100)  # 100 token buffer
+        # Determine initial and max tokens based on request type
+        # For insights generation, we need more tokens for structured JSON output
+        if quick_action_id == "generate_insights":
+            initial_max_tokens = 3000
+            max_total_tokens = 8000
+        else:
+            # Regular chat - start with 4000, can go up to 12000 if needed
+            initial_max_tokens = 4000
+            max_total_tokens = 12000
 
         self.logger.main_logger.info(
-            f"Token estimation - Input chars: {estimated_input_chars}, "
-            f"Est. input tokens: {estimated_input_tokens}, Max response tokens: {max_response_tokens}"
+            f"Token strategy: initial={initial_max_tokens}, max={max_total_tokens}, "
+            f"request_type={'insights' if quick_action_id == 'generate_insights' else 'chat'}"
         )
 
-        # Call vLLM
+        # Call vLLM with retry logic
         try:
-            # For reasoning models, set include_reasoning=false to get only final answer
-            # See: https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html
-            response = await client.chat.completions.create(
+            content = await self._call_llm_with_retry(
+                client=client,
                 model=model,
                 messages=messages,
+                initial_max_tokens=initial_max_tokens,
+                max_total_tokens=max_total_tokens,
                 temperature=0.7,
-                max_tokens=max_response_tokens,
-                extra_body={
-                    "include_reasoning": False  # Skip chain-of-thought, return only final answer
-                }
+                max_retries=3
             )
-
-            # Get response content
-            message = response.choices[0].message
-            content = message.content
-
-            # With include_reasoning=false, content should have the final answer
-            # But if it's still None, fall back to reasoning_content
-            if content is None and hasattr(message, 'reasoning_content') and message.reasoning_content:
-                self.logger.main_logger.warning(
-                    "include_reasoning=false didn't work, falling back to reasoning_content extraction"
-                )
-                # Try to extract the final answer from reasoning content
-                reasoning = message.reasoning_content
-
-                # Try to find a clear answer section (common patterns in Hebrew and English)
-                answer_markers = [
-                    "\n\nתשובה:",
-                    "\n\nAnswer:",
-                    "\n\nסיכום:",
-                    "\n\nSummary:",
-                    "\n\nלסיכום,",
-                    "\n\nIn summary,",
-                    "\n\n---\n\n"
-                ]
-
-                final_answer = reasoning
-                for marker in answer_markers:
-                    if marker in reasoning:
-                        final_answer = reasoning.split(marker, 1)[1].strip()
-                        self.logger.main_logger.info(f"Extracted answer after marker: {marker}")
-                        break
-
-                # If reasoning is very long, take only the last portion
-                if len(final_answer) > 2000:
-                    self.logger.main_logger.info("Reasoning too long, taking last 1500 chars")
-                    final_answer = "...\n\n" + final_answer[-1500:]
-
-                content = final_answer
-
-            if content is None or content.strip() == "":
-                self.logger.main_logger.warning("LLM returned empty content")
-                return "מצטער, לא הצלחתי ליצור תשובה. אנא נסה שוב."
-
             return content
 
         except Exception as e:
