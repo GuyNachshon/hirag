@@ -110,8 +110,19 @@ docker run -d \
   -e PORT=3000 \
   rag-frontend:latest
 
-# Step 6: Verify it's working
+# Step 6: Verify the build worked correctly
+# Check that the API URL was baked into the image
+docker inspect rag-frontend:latest | grep NEXT_PUBLIC_API_URL
+# Should show: "NEXT_PUBLIC_API_URL=http://YOUR_EXTERNAL_IP:8080"
+
+# Check container logs
 docker logs -f rag-frontend --tail 50
+```
+
+**TROUBLESHOOTING**: If you see `GET http://34.72.116.231:8087/34.72.116.231:8080/api/...` errors in browser:
+- This means the API URL was NOT set during build
+- Solution: Make sure you used `--build-arg NEXT_PUBLIC_API_URL=http://YOUR_EXTERNAL_IP:8080`
+- Rebuild the image with the correct build arg (see Step 3 above)
 ```
 
 **Why these specific settings?**
