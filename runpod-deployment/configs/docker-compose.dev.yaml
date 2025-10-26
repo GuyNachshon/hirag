@@ -1,0 +1,67 @@
+version: '3.8'
+
+# Development configuration - API and Frontend only
+# Assumes ML services (LLM, Embedding, Whisper, OCR) are already running
+# Use this for quick iteration on chat functionality and UI
+
+services:
+  # API Service (CPU only) - with transcription chat
+  rag-api:
+    image: rag-api:latest
+    container_name: rag-api-dev
+    ports:
+      - "8080:8080"
+    environment:
+      - HIRAG_CONFIG_PATH=/app/HiRAG/config.yaml
+      - LOG_LEVEL=DEBUG
+      - PYTHONPATH=/app
+      - DATABASE_DIR=/app/data
+    volumes:
+      - ../data:/app/data
+      - ../logs:/app/logs
+      - model-cache:/root/.cache/huggingface
+    restart: unless-stopped
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8080/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+  # Frontend Service (CPU only)
+  rag-frontend:
+    image: rag-frontend-complete:latest
+    container_name: rag-frontend-dev
+    ports:
+      - "8087:8087"
+    environment:
+      - API_BASE_URL=http://rag-api:8080
+      - NEXT_PUBLIC_API_URL=http://localhost:8080
+    volumes:
+      - ../logs:/var/log/nginx
+    depends_on:
+      - rag-api
+    restart: unless-stopped
+    networks:
+      - rag-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:8087/frontend-health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+
+# Use existing network if available, otherwise create new one
+networks:
+  rag-network:
+    external: true
+    name: rag-network
+
+# Use existing model cache volume
+volumes:
+  model-cache:
+    driver: local
+    driver_opts:
+      type: none
+      o: bind
+      device: ${MODEL_CACHE_DIR:-./model-cache}

@@ -139,10 +139,10 @@ health:
 VLLM:
   api_key: "dummy-key"
   embedding:
-    base_url: "http://localhost:8001/v1"  # Embedding service port
+    base_url: "http://rag-embedding-server:8000/v1"  # Embedding service container
     model: "Qwen/Qwen3-Embedding-4B"
   llm:
-    base_url: "http://localhost:8000/v1"  # LLM service port
+    base_url: "http://rag-llm-server:8000/v1"  # LLM service container
     model: "openai/gpt-oss-20b"
 
 # HiRAG Configuration
