@@ -268,7 +268,7 @@ async def process_transcription_async(
 
         # Call transcription service
         result = await service.transcribe_audio(
-            audio_path=audio_path,
+            audio_file_path=audio_path,
             filename=transcript.audio_filename,
             enable_diarization=enable_diarization,
             identify_speakers=identify_speakers,
