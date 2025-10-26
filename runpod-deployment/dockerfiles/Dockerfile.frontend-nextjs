@@ -7,7 +7,7 @@ WORKDIR /app
 
 # Copy package files
 COPY source-code/frontend/package*.json ./
-RUN npm ci
+RUN npm ci --legacy-peer-deps
 
 # Rebuild the source code only when needed
 FROM base AS builder
