@@ -704,12 +704,29 @@ class TranscriptionChatService:
                 f"Transcript word count: {word_count}, estimated tokens: {token_estimate}"
             )
 
-            if token_estimate < self.TOKEN_THRESHOLD_SINGLE:
+            # Max context we can safely use (leave room for system prompt + user message + response)
+            # Model max = 4096, reserve 1500 for prompts + 1000 for response = 1596 for context
+            MAX_CONTEXT_TOKENS = 1500
+
+            if token_estimate < MAX_CONTEXT_TOKENS:
                 # Use full context
                 self.logger.main_logger.info("Using full context strategy")
                 return {
                     "strategy": "full_context",
                     "context": f"[Transcript: {transcript.title}]\n\n{transcript.full_text}",
+                    "sources": [transcript.id],
+                    "segment_references": None
+                }
+            elif token_estimate < self.TOKEN_THRESHOLD_SINGLE:
+                # Truncate context to fit in model
+                self.logger.main_logger.info("Using truncated full context strategy")
+                words = transcript.full_text.split()
+                # Calculate how many words we can fit (tokens * 0.77 ≈ words)
+                max_words = int(MAX_CONTEXT_TOKENS * 0.77)
+                truncated_text = " ".join(words[:max_words])
+                return {
+                    "strategy": "truncated_context",
+                    "context": f"[Transcript: {transcript.title}] (truncated to fit context window)\n\n{truncated_text}",
                     "sources": [transcript.id],
                     "segment_references": None
                 }
