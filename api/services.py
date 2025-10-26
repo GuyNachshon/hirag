@@ -1170,7 +1170,18 @@ class TranscriptionChatService:
                 max_tokens=max_response_tokens
             )
 
-            return response.choices[0].message.content
+            self.logger.main_logger.info(f"LLM response type: {type(response)}")
+            self.logger.main_logger.info(f"LLM response choices: {len(response.choices)}")
+            if response.choices:
+                self.logger.main_logger.info(f"First choice: {response.choices[0]}")
+                self.logger.main_logger.info(f"Message: {response.choices[0].message}")
+                self.logger.main_logger.info(f"Content type: {type(response.choices[0].message.content)}")
+
+            content = response.choices[0].message.content
+            if content is None:
+                self.logger.main_logger.warning("LLM returned None content, using empty string")
+                return ""
+            return content
 
         except Exception as e:
             import traceback
