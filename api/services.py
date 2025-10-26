@@ -1151,27 +1151,37 @@ class TranscriptionChatService:
                 # Fallback to reasoning_content if content is empty (BEFORE checking retry)
                 if (content is None or content.strip() == "") and hasattr(message, 'reasoning_content') and message.reasoning_content:
                     self.logger.main_logger.warning(
-                        "include_reasoning=false didn't work, extracting from reasoning_content"
+                        "include_reasoning=false didn't work, using reasoning_content as response"
                     )
                     reasoning = message.reasoning_content
 
-                    # Try to extract final answer
+                    # Try to extract final answer using markers
                     answer_markers = [
                         "\n\nתשובה:", "\n\nAnswer:", "\n\nסיכום:", "\n\nSummary:",
-                        "\n\nלסיכום,", "\n\nIn summary,", "\n\n---\n\n"
+                        "\n\nלסיכום,", "\n\nIn summary,", "\n\n---\n\n",
+                        "\n\nFinal Answer:", "\n\nתשובה סופית:"
                     ]
 
                     final_answer = reasoning
+                    found_marker = False
                     for marker in answer_markers:
                         if marker in reasoning:
                             final_answer = reasoning.split(marker, 1)[1].strip()
                             self.logger.main_logger.info(f"Extracted answer after marker: {marker}")
+                            found_marker = True
                             break
 
-                    # Truncate if too long
-                    if len(final_answer) > 2000:
-                        self.logger.main_logger.info("Reasoning too long, taking last 1500 chars")
-                        final_answer = "...\n\n" + final_answer[-1500:]
+                    # If no marker found, use the entire reasoning as the answer
+                    if not found_marker:
+                        self.logger.main_logger.info("No answer marker found, using full reasoning_content")
+                        # For GPT-OSS, the reasoning often IS the answer
+                        # Just clean it up a bit
+                        final_answer = reasoning.strip()
+
+                    # Truncate if too long (but keep more since it's the actual answer)
+                    if len(final_answer) > 3000:
+                        self.logger.main_logger.info(f"Response too long ({len(final_answer)} chars), truncating to 3000 chars")
+                        final_answer = final_answer[:3000] + "\n\n[...תשובה נחתכה בגלל אורך]"
 
                     content = final_answer
 
