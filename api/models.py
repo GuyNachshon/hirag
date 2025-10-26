@@ -1,4 +1,4 @@
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 from typing import List, Optional, Dict, Any
 from datetime import datetime
 from enum import Enum
@@ -8,6 +8,141 @@ class HealthResponse(BaseModel):
     status: str
     message: str
     version: str
+
+# ===================================
+# Authentication Models
+# ===================================
+
+class RegisterRequest(BaseModel):
+    username: str = Field(..., min_length=3, max_length=50)
+    password: str = Field(..., min_length=6, max_length=128)
+
+class LoginRequest(BaseModel):
+    username: str
+    password: str
+
+class AuthResponse(BaseModel):
+    user_id: str
+    username: str
+    token: str
+    expires_at: datetime
+
+class UserResponse(BaseModel):
+    user_id: str
+    username: str
+    created_at: datetime
+
+class ChangePasswordRequest(BaseModel):
+    current_password: str
+    new_password: str = Field(..., min_length=6, max_length=128)
+
+# ===================================
+# Folder Models
+# ===================================
+
+class FolderCreate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+
+class FolderUpdate(BaseModel):
+    name: str = Field(..., min_length=1, max_length=100)
+
+class FolderResponse(BaseModel):
+    id: str
+    name: str
+    transcript_count: int
+    created_at: datetime
+    updated_at: datetime
+
+class FolderListResponse(BaseModel):
+    folders: List[FolderResponse]
+    total_count: int
+
+# ===================================
+# Transcript Models (Enhanced)
+# ===================================
+
+class TranscriptStatus(str, Enum):
+    PROCESSING = "processing"
+    COMPLETED = "completed"
+    FAILED = "failed"
+
+class TranscriptUploadResponse(BaseModel):
+    transcript_id: str
+    status: TranscriptStatus
+    message: str
+
+# Audio transcription segment model (needed by TranscriptDetailResponse)
+class TranscriptionSegment(BaseModel):
+    start: float
+    end: float
+    text: str
+    speaker: Optional[str] = None  # Speaker label when diarization is enabled
+
+class TranscriptStatusResponse(BaseModel):
+    transcript_id: str
+    status: TranscriptStatus
+    progress_percent: int
+    error_message: Optional[str] = None
+
+class TranscriptListItem(BaseModel):
+    id: str
+    title: str
+    duration: Optional[float] = None
+    status: TranscriptStatus
+    folder_id: Optional[str] = None
+    folder_name: Optional[str] = None
+    tags: List[str] = []
+    speakers: List[str] = []
+    language: str
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
+
+class TranscriptListResponse(BaseModel):
+    transcripts: List[TranscriptListItem]
+    total_count: int
+
+class TranscriptUpdateRequest(BaseModel):
+    title: Optional[str] = None
+    folder_id: Optional[str] = None
+    tags: Optional[List[str]] = None
+
+class TranscriptDetailResponse(BaseModel):
+    id: str
+    title: str
+    duration: Optional[float] = None
+    status: TranscriptStatus
+    folder_id: Optional[str] = None
+    folder_name: Optional[str] = None
+    tags: List[str] = []
+    language: str
+    full_text: Optional[str] = None
+    language_probability: Optional[float] = None
+    diarization_enabled: bool
+    num_speakers: Optional[int] = None
+    speaker_names: Optional[Dict[str, str]] = None
+    segments: List[TranscriptionSegment]
+    created_at: datetime
+    updated_at: datetime
+    completed_at: Optional[datetime] = None
+
+class ExportFormat(str, Enum):
+    TXT = "txt"
+    PDF = "pdf"
+    JSON = "json"
+
+# ===================================
+# Search Models
+# ===================================
+
+class TranscriptSearchRequest(BaseModel):
+    q: str = Field(..., min_length=1)
+    folder_id: Optional[str] = None
+    tags: Optional[List[str]] = None
+    date_from: Optional[datetime] = None
+    date_to: Optional[datetime] = None
+    limit: int = Field(default=20, ge=1, le=100)
+    offset: int = Field(default=0, ge=0)
 
 # File search models
 class FileSearchRequest(BaseModel):
@@ -89,12 +224,6 @@ class FileUploadResponse(BaseModel):
     message: str
 
 # Audio transcription models
-class TranscriptionSegment(BaseModel):
-    start: float
-    end: float
-    text: str
-    speaker: Optional[str] = None  # Speaker label when diarization is enabled
-
 class TranscriptionResponse(BaseModel):
     success: bool
     text: str
@@ -113,3 +242,72 @@ class TranscriptionErrorResponse(BaseModel):
     success: bool = False
     error: str
     message: str
+
+# ===================================
+# Quick Actions Models
+# ===================================
+
+class QuickAction(BaseModel):
+    id: str
+    label: str
+    icon: str
+    prompt_template: str
+    description: Optional[str] = None
+
+class QuickActionsResponse(BaseModel):
+    context: str  # 'folder' or 'transcript'
+    actions: List[QuickAction]
+
+# ===================================
+# Transcription Chat Models
+# ===================================
+
+class TranscriptionChatSessionRequest(BaseModel):
+    context_type: str  # 'folder' or 'transcript'
+    context_id: str  # folder_id or transcript_id
+    name: Optional[str] = None
+
+class TranscriptionChatSessionResponse(BaseModel):
+    session_id: str
+    context_type: str
+    context_id: str
+    created_at: datetime
+
+class SegmentReference(BaseModel):
+    """Reference to a specific segment used in response"""
+    transcript_id: str
+    transcript_title: str
+    segment_id: str
+    speaker: Optional[str]
+    start_time: float
+    end_time: float
+    text: str
+
+class TranscriptionChatMessageRequest(BaseModel):
+    content: str
+    context_type: str  # 'folder' or 'transcript'
+    context_id: str  # folder_id or transcript_id
+    quick_action_id: Optional[str] = None
+    include_sources: bool = True
+
+class TranscriptionChatMessageResponse(BaseModel):
+    message_id: str
+    content: str
+    timestamp: datetime
+    strategy_used: str  # 'full_context' or 'embedding_search'
+    sources: List[str]  # transcript IDs used
+    segment_references: Optional[List[SegmentReference]] = None  # If embedding search used
+    processing_time: float
+
+class TranscriptionChatMessage(BaseModel):
+    message_id: str
+    role: str  # 'user' or 'assistant'
+    content: str
+    timestamp: datetime
+    strategy_used: Optional[str] = None
+    sources: Optional[List[str]] = None
+
+class TranscriptionChatHistory(BaseModel):
+    session_id: str
+    messages: List[TranscriptionChatMessage]
+    total_messages: int

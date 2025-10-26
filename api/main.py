@@ -13,24 +13,41 @@ from openai import AsyncOpenAI
 
 from .logger import setup_logging, get_logger
 
-# Add HiRAG to path
+# Add HiRAG to path (optional - only needed for RAG features)
 hirag_path = Path(__file__).parent.parent / "HiRAG"
 sys.path.insert(0, str(hirag_path))
 
-from hirag import HiRAG, QueryParam
-from hirag.base import BaseKVStorage
-from hirag._utils import compute_args_hash
+try:
+    from hirag import HiRAG, QueryParam
+    from hirag.base import BaseKVStorage
+    from hirag._utils import compute_args_hash
+    HIRAG_AVAILABLE = True
+except ImportError as e:
+    print(f"Warning: HiRAG not available: {e}")
+    print("RAG features will be disabled. Transcription features will still work.")
+    HIRAG_AVAILABLE = False
+    HiRAG = None
+    QueryParam = None
+    BaseKVStorage = None
+    compute_args_hash = None
 from .models import (
     FileSearchRequest, FileSearchResponse, FileResult,
     ChatSession, ChatMessage, ChatMessageRequest, ChatMessageResponse,
     SessionCreateRequest, SessionCreateResponse, HealthResponse
 )
-from .services import ChatSessionService, FileSearchService, RAGService, TranscriptionService
+from .services import ChatSessionService, FileSearchService, RAGService, TranscriptionService, TranscriptionChatService
 
-# Load configuration
-config_path = Path(__file__).parent.parent / "HiRAG" / "config.yaml"
-with open(config_path, 'r') as file:
-    config = yaml.safe_load(file)
+# Load configuration (only if HiRAG is available)
+config = None
+if HIRAG_AVAILABLE:
+    config_path = Path(__file__).parent.parent / "HiRAG" / "config.yaml"
+    try:
+        with open(config_path, 'r') as file:
+            config = yaml.safe_load(file)
+    except FileNotFoundError:
+        print(f"Warning: Config file not found at {config_path}")
+        print("Using default configuration for transcription-only mode")
+        HIRAG_AVAILABLE = False
 
 # Global variables
 hirag_instance = None
@@ -38,6 +55,7 @@ chat_service = None
 file_search_service = None
 rag_service = None
 transcription_service = None
+transcription_chat_service = None
 
 @dataclass
 class EmbeddingFunc:
@@ -113,34 +131,51 @@ async def vllm_model_if_cache(prompt, system_prompt=None, history_messages=[], *
 @asynccontextmanager
 async def lifespan(app: FastAPI):
     """Initialize services on startup"""
-    global hirag_instance, chat_service, file_search_service, rag_service, transcription_service
-    
+    global hirag_instance, chat_service, file_search_service, rag_service, transcription_service, transcription_chat_service
+
     # Setup logging
     logger = setup_logging()
     logger.main_logger.info("Starting Offline RAG API...")
-    
+
     try:
-        # Initialize HiRAG with vLLM configuration
-        logger.main_logger.info("Initializing HiRAG system...")
-        hirag_instance = HiRAG(
-            working_dir=config['hirag']['working_dir'],
-            enable_llm_cache=config['hirag']['enable_llm_cache'],
-            embedding_func=vllm_embedding,
-            best_model_func=vllm_model_if_cache,
-            cheap_model_func=vllm_model_if_cache,
-            enable_hierachical_mode=config['hirag']['enable_hierarchical_mode'],
-            embedding_batch_num=config['hirag']['embedding_batch_num'],
-            embedding_func_max_async=config['hirag']['embedding_func_max_async'],
-            enable_naive_rag=config['hirag']['enable_naive_rag']
-        )
-        logger.main_logger.info("HiRAG system initialized successfully")
-        
+        # Initialize database
+        logger.main_logger.info("Initializing database...")
+        from .database import init_db
+        init_db()
+        logger.main_logger.info("Database initialized successfully")
+
+        # Initialize HiRAG with vLLM configuration (if available)
+        if HIRAG_AVAILABLE and config:
+            logger.main_logger.info("Initializing HiRAG system...")
+            hirag_instance = HiRAG(
+                working_dir=config['hirag']['working_dir'],
+                enable_llm_cache=config['hirag']['enable_llm_cache'],
+                embedding_func=vllm_embedding,
+                best_model_func=vllm_model_if_cache,
+                cheap_model_func=vllm_model_if_cache,
+                enable_hierachical_mode=config['hirag']['enable_hierarchical_mode'],
+                embedding_batch_num=config['hirag']['embedding_batch_num'],
+                embedding_func_max_async=config['hirag']['embedding_func_max_async'],
+                enable_naive_rag=config['hirag']['enable_naive_rag']
+            )
+            logger.main_logger.info("HiRAG system initialized successfully")
+        else:
+            logger.main_logger.warning("HiRAG not available - RAG features disabled")
+
         # Initialize services
         logger.main_logger.info("Initializing API services...")
-        chat_service = ChatSessionService()
-        file_search_service = FileSearchService(hirag_instance)
-        rag_service = RAGService(hirag_instance, config)
-        transcription_service = TranscriptionService(config)
+        chat_service = ChatSessionService() if HIRAG_AVAILABLE else None
+        file_search_service = FileSearchService(hirag_instance) if hirag_instance else None
+        rag_service = RAGService(hirag_instance, config) if (hirag_instance and config) else None
+
+        # TranscriptionService can work without HiRAG (transcription-only mode)
+        transcription_service = TranscriptionService(config) if config else TranscriptionService({})
+
+        # TranscriptionChatService uses embedding function for semantic search
+        transcription_chat_service = TranscriptionChatService(
+            config if config else {},
+            embedding_func=vllm_embedding if HIRAG_AVAILABLE else None
+        )
         logger.main_logger.info("All services initialized successfully")
         
         logger.main_logger.info("Offline RAG API startup complete")
@@ -169,9 +204,12 @@ app = FastAPI(
 )
 
 # Add CORS middleware
+# Get allowed origins from environment or use defaults
+allowed_origins = os.getenv("CORS_ORIGINS", "http://localhost:3000,http://localhost:8087").split(",")
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=["*"],  # Configure based on your UI domain
+    allow_origins=allowed_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],
@@ -246,8 +284,20 @@ async def health_check():
     )
 
 # Include routers
-from .routers import file_search, chat, transcription
+from .routers import file_search, chat, transcription, auth, folders, search, quick_actions, transcription_chat
 
+# Authentication and user management
+app.include_router(auth.router, tags=["Authentication"])
+
+# Transcription system (requires auth)
+app.include_router(transcription.router, tags=["Transcription"])
+app.include_router(transcription_chat.router, tags=["Transcription Chat"])
+app.include_router(folders.router, tags=["Folders"])
+app.include_router(search.router, tags=["Search"])
+
+# RAG and chat (existing functionality)
 app.include_router(file_search.router, prefix="/api", tags=["file-search"])
 app.include_router(chat.router, prefix="/api", tags=["chat"])
-app.include_router(transcription.router, prefix="/api", tags=["transcription"])
+
+# Quick actions for chat shortcuts
+app.include_router(quick_actions.router, tags=["Quick Actions"])

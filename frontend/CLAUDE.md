@@ -12,6 +12,7 @@ This is an AI-powered transcription web application built with Next.js 16, React
 - AI-powered insights (summaries, action items, key points)
 - Interactive chat interface for querying transcripts
 - Folder-based organization
+- **Full RTL (Right-to-Left) support with Hebrew UI**
 
 ## Development Commands
 
@@ -81,6 +82,12 @@ npx shadcn@latest add [component-name]
 - `/transcript/[id]` → TranscriptViewer component (detailed transcript view)
 
 ### Key Architectural Patterns
+
+**Layout Persistence:**
+- `AppLayout` component wraps all pages in `app/layout.tsx`
+- Header and sidebars persist across routes without re-rendering
+- Only main content changes when navigating between pages
+- Prevents layout flicker and maintains state across navigation
 
 **Client-Side Rendering:**
 - All main components use `"use client"` directive
@@ -161,11 +168,21 @@ const [step, setStep] = useState<UploadStep>("select")
 
 ### Main Components
 
+**app-layout.tsx** (Persistent Layout Wrapper)
+- Wraps all pages to maintain header and sidebars across routes
+- Unified header with search, navigation, and sidebar toggles
+- Left sidebar: folder navigation ("התמלילים שלי", folders list)
+- Right sidebar: AI chat with quick action buttons
+- Manages global sidebar state (left/right visibility)
+- Prevents re-rendering when navigating between pages
+
 **library-view.tsx** (Home Dashboard)
-- Three-column layout: folders sidebar, transcript list, AI chat sidebar
-- Responsive sidebar toggles for mobile
-- Mock data: 4 sample transcripts
-- State: selected folder, sidebar visibility, chat messages
+- Main content area for home page (`/`)
+- Displays transcript cards in a list view
+- Folder title and drag-drop zone for uploads
+- Returns only `<main>` content (no wrappers - layout handled by AppLayout)
+- Mock data: 4 sample Hebrew transcripts with speakers
+- State: selected folder, chat messages
 
 **upload-flow.tsx** (Upload Workflow)
 - Four-step process: select → uploading → processing → complete
@@ -174,11 +191,12 @@ const [step, setStep] = useState<UploadStep>("select")
 - Navigation via Next.js `useRouter`
 
 **transcript-viewer.tsx** (Detail View)
-- Two tabs: Transcript (speaker segments) + Insights (AI analysis)
-- Right sidebar: AI chat with quick action buttons
-- Drag-drop zone for additional file uploads
-- Modal dialog for upload configuration
-- Mock data: 10 speaker segments with timestamps
+- Main content area for transcript detail page (`/transcript/[id]`)
+- Two views: Transcript (speaker segments) + Insights (AI analysis)
+- Toggle buttons at bottom center to switch views
+- Modal dialog for new transcript upload configuration
+- Returns only main content (layout handled by AppLayout)
+- Mock data: 10 Hebrew speaker segments with timestamps
 
 ### UI Component Library (shadcn/ui)
 
@@ -370,6 +388,53 @@ Access in code:
 ```tsx
 const apiUrl = process.env.NEXT_PUBLIC_API_URL
 ```
+
+## RTL (Right-to-Left) Support
+
+The application has **full RTL support for Hebrew**:
+
+### Implementation Details
+
+**Root Configuration:**
+- `app/layout.tsx` sets `lang="he"` and `dir="rtl"` on HTML element
+- All text flows right-to-left automatically
+
+**RTL-Aware Styling:**
+- Icon flipping using `scale-x-[-1]` for directional icons (arrows, chevrons)
+- Margin/padding swaps: `mr-*` ↔ `ml-*`, `pr-*` ↔ `pl-*`
+- Border swaps: `border-l` ↔ `border-r` for sidebars
+- Position swaps: `left-*` ↔ `right-*` for absolute positioning
+- Alignment swaps: `justify-start` ↔ `justify-end`, `align="end"` ↔ `align="start"`
+- Chat bubble order reversed (user on right, AI on left in RTL)
+- Button order reversed in forms/dialogs
+
+**Global RTL Styles (`app/globals.css`):**
+```css
+[dir="rtl"] {
+  direction: rtl;
+  text-align: right;
+}
+
+[dir="rtl"] input,
+[dir="rtl"] textarea {
+  text-align: right;
+}
+
+[dir="rtl"] .flex {
+  direction: rtl;
+}
+```
+
+**Hebrew Translations:**
+- All UI text translated to Hebrew
+- Mock data (transcripts, speakers, dates) in Hebrew
+- Folder names, button labels, placeholders all localized
+
+**To Switch Back to English/LTR:**
+1. Change `lang="he"` to `lang="en"` in `app/layout.tsx`
+2. Change `dir="rtl"` to `dir="ltr"` in `app/layout.tsx`
+3. Revert component text translations
+4. Adjust component-specific RTL styling (margins, icons, positions)
 
 ## Known Limitations
 

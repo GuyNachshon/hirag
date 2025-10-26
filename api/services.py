@@ -440,6 +440,7 @@ JSON Response:"""
         filename: str,
         enable_diarization: bool = True,
         identify_speakers: bool = False,
+        num_speakers: Optional[int] = None,
         language: str = "he"
     ) -> TranscriptionResponse:
         """
@@ -450,6 +451,7 @@ JSON Response:"""
             filename: Original filename
             enable_diarization: Enable speaker diarization (enabled by default)
             identify_speakers: Use LLM to identify speaker names from conversation (requires diarization)
+            num_speakers: Expected number of speakers (hint for diarization)
             language: Language code (default: "he" for Hebrew)
         """
         import aiofiles
@@ -471,6 +473,10 @@ JSON Response:"""
             data.add_field('file', audio_content, filename=filename, content_type='audio/*')
             data.add_field('language', language)
             data.add_field('diarize', str(enable_diarization).lower())
+
+            # Add num_speakers hint if provided and diarization is enabled
+            if num_speakers is not None and enable_diarization:
+                data.add_field('num_speakers', str(num_speakers))
 
             # Call Whisper service
             async with aiohttp.ClientSession() as session:
@@ -582,3 +588,533 @@ JSON Response:"""
                 error=str(e),
                 message=f"Transcription failed: {str(e)}"
             )
+
+
+class TranscriptionChatService:
+    """Service for chat functionality specific to transcriptions"""
+
+    # Thresholds for adaptive context strategy
+    TOKEN_THRESHOLD_SINGLE = 50000  # ~40k words for single transcript
+    TOKEN_THRESHOLD_FOLDER = 100000  # ~80k words for folder
+    WORD_TO_TOKEN_RATIO = 1.3  # Conservative estimate
+
+    def __init__(self, config: Dict[str, Any], embedding_func=None):
+        self.config = config
+        self.embedding_func = embedding_func
+        self.logger = get_logger()
+
+        # In-memory session storage
+        self.sessions: Dict[str, Dict] = {}
+        self.session_messages: Dict[str, List] = {}
+
+    def create_session(self, context_type: str, context_id: str, name: Optional[str] = None) -> Dict:
+        """Create a new chat session"""
+        session_id = str(uuid.uuid4())
+        now = datetime.now()
+
+        session = {
+            "session_id": session_id,
+            "context_type": context_type,
+            "context_id": context_id,
+            "name": name or f"Chat {len(self.sessions) + 1}",
+            "created_at": now
+        }
+
+        self.sessions[session_id] = session
+        self.session_messages[session_id] = []
+
+        self.logger.main_logger.info(
+            f"Created transcription chat session: {session_id} "
+            f"(type={context_type}, id={context_id})"
+        )
+
+        return session
+
+    def get_session(self, session_id: str) -> Optional[Dict]:
+        """Get session by ID"""
+        return self.sessions.get(session_id)
+
+    def delete_session(self, session_id: str) -> bool:
+        """Delete a session"""
+        if session_id in self.sessions:
+            del self.sessions[session_id]
+            del self.session_messages[session_id]
+            return True
+        return False
+
+    def add_message(self, session_id: str, role: str, content: str,
+                   strategy_used: Optional[str] = None, sources: Optional[List[str]] = None):
+        """Add a message to session history"""
+        if session_id not in self.sessions:
+            return None
+
+        message = {
+            "message_id": str(uuid.uuid4()),
+            "role": role,
+            "content": content,
+            "timestamp": datetime.now(),
+            "strategy_used": strategy_used,
+            "sources": sources
+        }
+
+        self.session_messages[session_id].append(message)
+        return message
+
+    def get_messages(self, session_id: str) -> List:
+        """Get all messages for a session"""
+        return self.session_messages.get(session_id, [])
+
+    async def get_adaptive_context(
+        self,
+        context_type: str,
+        context_id: str,
+        user_message: str,
+        user_id: str,
+        db
+    ) -> Dict:
+        """
+        Adaptively choose context strategy based on content size.
+        Returns dict with: strategy, context, sources, segment_references
+        """
+        from .database import Transcript, TranscriptSegment, Folder
+
+        self.logger.main_logger.info(
+            f"Getting adaptive context: type={context_type}, id={context_id}"
+        )
+
+        if context_type == "transcript":
+            # Single transcript
+            transcript = (
+                db.query(Transcript)
+                .filter(Transcript.id == context_id)
+                .filter(Transcript.user_id == user_id)
+                .first()
+            )
+
+            if not transcript:
+                raise ValueError("Transcript not found")
+
+            if not transcript.full_text:
+                raise ValueError("Transcript has no text")
+
+            word_count = len(transcript.full_text.split())
+            token_estimate = int(word_count * self.WORD_TO_TOKEN_RATIO)
+
+            self.logger.main_logger.info(
+                f"Transcript word count: {word_count}, estimated tokens: {token_estimate}"
+            )
+
+            if token_estimate < self.TOKEN_THRESHOLD_SINGLE:
+                # Use full context
+                self.logger.main_logger.info("Using full context strategy")
+                return {
+                    "strategy": "full_context",
+                    "context": f"[Transcript: {transcript.title}]\n\n{transcript.full_text}",
+                    "sources": [transcript.id],
+                    "segment_references": None
+                }
+            else:
+                # Use embedding search
+                self.logger.main_logger.info("Using embedding search strategy")
+                return await self._embedding_search(
+                    user_message,
+                    transcript_id=context_id,
+                    user_id=user_id,
+                    db=db
+                )
+
+        elif context_type == "folder":
+            # Multiple transcripts
+            transcripts = (
+                db.query(Transcript)
+                .filter(Transcript.folder_id == context_id)
+                .filter(Transcript.user_id == user_id)
+                .filter(Transcript.status == "completed")
+                .all()
+            )
+
+            if not transcripts:
+                raise ValueError("No transcripts found in folder")
+
+            total_words = sum(
+                len(t.full_text.split()) if t.full_text else 0
+                for t in transcripts
+            )
+            token_estimate = int(total_words * self.WORD_TO_TOKEN_RATIO)
+
+            self.logger.main_logger.info(
+                f"Folder has {len(transcripts)} transcripts, "
+                f"total words: {total_words}, estimated tokens: {token_estimate}"
+            )
+
+            if token_estimate < self.TOKEN_THRESHOLD_FOLDER:
+                # Use all transcripts
+                self.logger.main_logger.info("Using full context strategy for folder")
+                context_parts = []
+                for t in transcripts:
+                    if t.full_text:
+                        context_parts.append(f"[Transcript: {t.title}]\n{t.full_text}")
+
+                return {
+                    "strategy": "full_context",
+                    "context": "\n\n---\n\n".join(context_parts),
+                    "sources": [t.id for t in transcripts],
+                    "segment_references": None
+                }
+            else:
+                # Use embedding search with keyword filter
+                self.logger.main_logger.info("Using embedding search strategy for folder")
+                return await self._embedding_search_with_filter(
+                    user_message,
+                    folder_id=context_id,
+                    user_id=user_id,
+                    db=db
+                )
+        else:
+            raise ValueError(f"Invalid context_type: {context_type}")
+
+    async def _embedding_search(
+        self,
+        query: str,
+        transcript_id: Optional[str] = None,
+        folder_id: Optional[str] = None,
+        user_id: str = None,
+        db = None
+    ) -> Dict:
+        """
+        Perform embedding-based semantic search on segments.
+        Returns top K most relevant segments as context.
+        """
+        from .database import Transcript, TranscriptSegment
+        import json
+        import base64
+
+        if not self.embedding_func:
+            raise ValueError("Embedding function not available")
+
+        # Get segments
+        if transcript_id:
+            transcript = (
+                db.query(Transcript)
+                .filter(Transcript.id == transcript_id)
+                .filter(Transcript.user_id == user_id)
+                .first()
+            )
+
+            if not transcript:
+                raise ValueError("Transcript not found")
+
+            # Check if embeddings exist
+            if not transcript.embeddings_generated:
+                self.logger.main_logger.info(
+                    f"Generating embeddings for transcript {transcript_id}"
+                )
+                await self._generate_embeddings_for_transcript(transcript_id, db)
+
+            segments = (
+                db.query(TranscriptSegment)
+                .filter(TranscriptSegment.transcript_id == transcript_id)
+                .all()
+            )
+
+            transcript_map = {transcript.id: transcript}
+
+        else:  # folder_id
+            transcripts = (
+                db.query(Transcript)
+                .filter(Transcript.folder_id == folder_id)
+                .filter(Transcript.user_id == user_id)
+                .filter(Transcript.status == "completed")
+                .all()
+            )
+
+            transcript_map = {t.id: t for t in transcripts}
+
+            # Generate embeddings for any transcripts that don't have them
+            for t in transcripts:
+                if not t.embeddings_generated:
+                    self.logger.main_logger.info(
+                        f"Generating embeddings for transcript {t.id}"
+                    )
+                    await self._generate_embeddings_for_transcript(t.id, db)
+
+            # Get all segments from these transcripts
+            segments = (
+                db.query(TranscriptSegment)
+                .join(Transcript)
+                .filter(Transcript.folder_id == folder_id)
+                .filter(Transcript.user_id == user_id)
+                .all()
+            )
+
+        # Embed the query
+        query_embedding = await self.embedding_func([query])
+        query_vec = query_embedding[0]  # First (and only) embedding
+
+        # Compute similarities
+        similarities = []
+        for seg in segments:
+            if seg.embedding:
+                try:
+                    # Deserialize embedding
+                    seg_vec = np.array(json.loads(seg.embedding))
+
+                    # Cosine similarity
+                    similarity = np.dot(query_vec, seg_vec) / (
+                        np.linalg.norm(query_vec) * np.linalg.norm(seg_vec)
+                    )
+
+                    similarities.append((similarity, seg))
+                except Exception as e:
+                    self.logger.main_logger.warning(
+                        f"Error computing similarity for segment {seg.id}: {e}"
+                    )
+
+        # Get top K segments
+        top_k = 5
+        top_segments = sorted(similarities, key=lambda x: x[0], reverse=True)[:top_k]
+
+        self.logger.main_logger.info(
+            f"Found {len(top_segments)} relevant segments from {len(segments)} total"
+        )
+
+        # Build context
+        context_parts = []
+        segment_references = []
+
+        for similarity, seg in top_segments:
+            transcript = transcript_map[seg.transcript_id]
+
+            # Format timestamp
+            minutes = int(seg.start_time // 60)
+            seconds = int(seg.start_time % 60)
+            timestamp = f"{minutes:02d}:{seconds:02d}"
+
+            speaker_label = f"[{seg.speaker}]" if seg.speaker else ""
+            context_parts.append(
+                f"[{transcript.title} - {timestamp}] {speaker_label} {seg.text}"
+            )
+
+            segment_references.append({
+                "transcript_id": transcript.id,
+                "transcript_title": transcript.title,
+                "segment_id": seg.id,
+                "speaker": seg.speaker,
+                "start_time": seg.start_time,
+                "end_time": seg.end_time,
+                "text": seg.text
+            })
+
+        return {
+            "strategy": "embedding_search",
+            "context": "Relevant segments:\n\n" + "\n\n".join(context_parts),
+            "sources": list(set(seg.transcript_id for _, seg in top_segments)),
+            "segment_references": segment_references
+        }
+
+    async def _embedding_search_with_filter(
+        self,
+        query: str,
+        folder_id: str,
+        user_id: str,
+        db
+    ) -> Dict:
+        """
+        Embedding search with keyword pre-filtering for large folders.
+        First filters transcripts by keywords, then does embedding search.
+        """
+        from .database import Transcript
+        from sqlalchemy import or_
+
+        # Extract keywords (simple: top 3 words)
+        keywords = [w.lower() for w in query.split() if len(w) > 3][:3]
+
+        if keywords:
+            # Filter transcripts that contain any of the keywords
+            filters = [Transcript.full_text.ilike(f"%{kw}%") for kw in keywords]
+
+            relevant_transcripts = (
+                db.query(Transcript)
+                .filter(Transcript.folder_id == folder_id)
+                .filter(Transcript.user_id == user_id)
+                .filter(Transcript.status == "completed")
+                .filter(or_(*filters))
+                .limit(10)  # Limit to top 10 matching transcripts
+                .all()
+            )
+
+            self.logger.main_logger.info(
+                f"Keyword filter narrowed to {len(relevant_transcripts)} transcripts"
+            )
+
+            if not relevant_transcripts:
+                # Fallback to all transcripts if no keyword matches
+                return await self._embedding_search(
+                    query, folder_id=folder_id, user_id=user_id, db=db
+                )
+
+            # Now do embedding search only on these transcripts' segments
+            # We'll temporarily modify the folder to only include these transcripts
+            # by searching each transcript individually and combining results
+            all_segment_refs = []
+            all_sources = set()
+
+            for transcript in relevant_transcripts:
+                result = await self._embedding_search(
+                    query, transcript_id=transcript.id, user_id=user_id, db=db
+                )
+                if result["segment_references"]:
+                    all_segment_refs.extend(result["segment_references"])
+                all_sources.update(result["sources"])
+
+            # Sort by relevance and take top 5
+            # (In this simple version, we just take first 5 - could improve with re-ranking)
+            top_refs = all_segment_refs[:5]
+
+            # Build context
+            context_parts = []
+            for ref in top_refs:
+                minutes = int(ref["start_time"] // 60)
+                seconds = int(ref["start_time"] % 60)
+                timestamp = f"{minutes:02d}:{seconds:02d}"
+                speaker_label = f"[{ref['speaker']}]" if ref['speaker'] else ""
+
+                context_parts.append(
+                    f"[{ref['transcript_title']} - {timestamp}] {speaker_label} {ref['text']}"
+                )
+
+            return {
+                "strategy": "embedding_search",
+                "context": "Relevant segments:\n\n" + "\n\n".join(context_parts),
+                "sources": list(all_sources),
+                "segment_references": top_refs
+            }
+        else:
+            # No keywords, fall back to regular embedding search
+            return await self._embedding_search(
+                query, folder_id=folder_id, user_id=user_id, db=db
+            )
+
+    async def _generate_embeddings_for_transcript(self, transcript_id: str, db):
+        """Generate and store embeddings for all segments in a transcript"""
+        from .database import Transcript, TranscriptSegment
+        import json
+
+        if not self.embedding_func:
+            raise ValueError("Embedding function not available")
+
+        segments = (
+            db.query(TranscriptSegment)
+            .filter(TranscriptSegment.transcript_id == transcript_id)
+            .all()
+        )
+
+        if not segments:
+            return
+
+        # Batch embed all segment texts
+        texts = [seg.text for seg in segments]
+
+        try:
+            embeddings = await self.embedding_func(texts)
+
+            # Store embeddings
+            for seg, emb in zip(segments, embeddings):
+                # Serialize as JSON list
+                seg.embedding = json.dumps(emb.tolist())
+
+            # Mark transcript as having embeddings
+            transcript = db.query(Transcript).filter(
+                Transcript.id == transcript_id
+            ).first()
+
+            if transcript:
+                transcript.embeddings_generated = True
+
+            db.commit()
+
+            self.logger.main_logger.info(
+                f"Generated embeddings for {len(segments)} segments "
+                f"in transcript {transcript_id}"
+            )
+
+        except Exception as e:
+            self.logger.main_logger.error(
+                f"Failed to generate embeddings for transcript {transcript_id}: {e}"
+            )
+            raise
+
+    async def generate_response(
+        self,
+        user_message: str,
+        context: str,
+        conversation_history: List,
+        quick_action_id: Optional[str] = None
+    ) -> str:
+        """
+        Generate LLM response with context and conversation history.
+        """
+        from openai import AsyncOpenAI
+
+        # Get vLLM configuration
+        vllm_config = self.config.get('VLLM', {})
+        llm_config = vllm_config.get('llm', {})
+        api_key = vllm_config.get('api_key', 0)
+        base_url = llm_config.get('base_url', 'http://localhost:8000/v1')
+        model = llm_config.get('model', 'model')
+
+        # Create client
+        client = AsyncOpenAI(api_key=str(api_key), base_url=base_url)
+
+        # Construct system prompt
+        system_prompt = """אתה עוזר AI המסייע למשתמשים לנתח תמלולי פגישות.
+
+היכולות שלך:
+- סיכום פגישות וחילוץ נקודות מפתח
+- זיהוי משימות והחלטות
+- מענה על שאלות לגבי מה שנדון
+- מציאת מידע ספציפי בשיחות
+- זיהוי דפוסים במספר פגישות
+
+הנחיות:
+- היה תמציתי ומדויק
+- צטט ישירות מהתמלולים כשרלוונטי
+- כלול חותמות זמן כשמתייחס לרגעים ספציפיים
+- אם המידע לא נמצא בהקשר המסופק, אמור זאת בבירור
+- תמוך בעברית ובאנגלית באופן שווה
+"""
+
+        # Build messages
+        messages = [{"role": "system", "content": system_prompt}]
+
+        # Add context
+        if context:
+            messages.append({
+                "role": "system",
+                "content": f"הקשר רלוונטי:\n\n{context}"
+            })
+
+        # Add conversation history (last 5 messages)
+        for msg in conversation_history[-5:]:
+            messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
+
+        # Add current user message
+        messages.append({"role": "user", "content": user_message})
+
+        # Call vLLM
+        try:
+            response = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=2048
+            )
+
+            return response.choices[0].message.content
+
+        except Exception as e:
+            self.logger.main_logger.error(f"Error calling vLLM: {e}")
+            return f"מצטער, נתקלתי בשגיאה ביצירת התשובה: {str(e)}"

@@ -1,0 +1,81 @@
+# Quick Actions Configuration
+# Context-aware chat shortcuts for different views
+
+folder:
+  - id: "folder_search_tasks"
+    label: "חיפוש משימות"
+    icon: "ListTodo"
+    prompt_template: "מצא את כל התמלילים עם משימות ופעולות מעקב"
+    description: "Search for action items across all transcripts in folder"
+
+  - id: "folder_summary_email"
+    label: "ניסוח אימייל סיכום"
+    icon: "Mail"
+    prompt_template: "נסח אימייל סיכום מקצועי על כל הפגישות האחרונות"
+    description: "Generate a professional summary email of recent meetings"
+
+  - id: "folder_find_qa"
+    label: "מציאת שאלות ותשובות"
+    icon: "HelpCircle"
+    prompt_template: "חפש ורשום את כל השאלות והתשובות בכל התמלילים"
+    description: "Extract all Q&A from transcripts in folder"
+
+transcript:
+  - id: "transcript_followup_email"
+    label: "ניסוח אימייל מעקב"
+    icon: "Mail"
+    prompt_template: "כתוב מייל מעקב על סמך השיחה הזו"
+    description: "Generate a follow-up email based on this conversation"
+
+  - id: "transcript_action_items"
+    label: "רשימת משימות"
+    icon: "ListTodo"
+    prompt_template: "רשום את כל פעולות המעקב מהתמליל הזה"
+    description: "List all action items from this transcript"
+
+  - id: "transcript_qa"
+    label: "שאלות ותשובות"
+    icon: "HelpCircle"
+    prompt_template: "רשום את כל השאלות והתשובות מהתמליל הזה"
+    description: "Extract all Q&A from this transcript"
+
+# Optional: Additional quick actions for future use
+# Uncomment and customize as needed
+
+# folder_extended:
+#   - id: "folder_analyze_trends"
+#     label: "ניתוח מגמות"
+#     icon: "TrendingUp"
+#     prompt_template: "נתח מגמות בפגישות האחרונות"
+#     description: "Analyze trends in recent meetings"
+#
+#   - id: "folder_find_decisions"
+#     label: "החלטות שנתקבלו"
+#     icon: "CheckCircle"
+#     prompt_template: "מצא החלטות שנתקבלו השבוע"
+#     description: "Find decisions made this week"
+#
+#   - id: "folder_participant_summary"
+#     label: "סיכום משתתפים"
+#     icon: "Users"
+#     prompt_template: "סכם תרומות של כל משתתף"
+#     description: "Summarize participant contributions"
+
+# transcript_extended:
+#   - id: "transcript_key_points"
+#     label: "נקודות מרכזיות"
+#     icon: "Target"
+#     prompt_template: "מה הנקודות המרכזיות?"
+#     description: "What are the key points?"
+#
+#   - id: "transcript_schedule_followup"
+#     label: "תזמון פגישת מעקב"
+#     icon: "Calendar"
+#     prompt_template: "תזמן פגישת מעקב על סמך הנושאים שנדונו"
+#     description: "Schedule follow-up based on discussed topics"
+#
+#   - id: "transcript_urgent_issues"
+#     label: "נושאים דחופים"
+#     icon: "AlertCircle"
+#     prompt_template: "האם היו נושאים דחופים?"
+#     description: "Were there urgent issues?"

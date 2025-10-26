@@ -2,7 +2,7 @@
 
 import type React from "react"
 
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -31,19 +31,16 @@ import {
   UploadIcon,
   AudioWaveform,
   Text,
+  Loader2,
+  AlertCircle,
 } from "lucide-react"
+import * as LucideIcons from "lucide-react"
 import Link from "next/link"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
-
-interface TranscriptSegment {
-  id: string
-  speaker: string
-  timestamp: string
-  text: string
-  startTime: number
-}
+import { apiClient } from "@/lib/api-client"
+import type { TranscriptDetailResponse, TranscriptSegment as APITranscriptSegment, QuickAction } from "@/lib/types"
 
 interface ChatMessage {
   id: string
@@ -52,112 +49,41 @@ interface ChatMessage {
   timestamp: Date
 }
 
-const mockTranscript: TranscriptSegment[] = [
-  {
-    id: "1",
-    speaker: "שרה כהן",
-    timestamp: "00:00",
-    text: "בוקר טוב לכולם! תודה שהצטרפתם לסנכרון המוצר של היום. בואו נתחיל בסבב מהיר של עדכונים מכל צוות.",
-    startTime: 0,
-  },
-  {
-    id: "2",
-    speaker: "מייק רודריגז",
-    timestamp: "00:15",
-    text: "היי צוות! הצד ההנדסי עשה התקדמות נהדרת בלוח המחוונים החדש. השלמנו את רכיבי ויזואליזציית הנתונים והם מוכנים לבדיקת QA.",
-    startTime: 15,
-  },
-  {
-    id: "3",
-    speaker: "שרה כהן",
-    timestamp: "00:32",
-    text: "אלו חדשות מצוינות, מייק. איך נראה הביצועים עם מערכי הנתונים הגדולים יותר?",
-    startTime: 32,
-  },
-  {
-    id: "4",
-    speaker: "מייק רודריגז",
-    timestamp: "00:38",
-    text: "הביצועים מוצקים. אנחנו רואים זמני טעינה מתחת ל-2 שניות אפילו עם 10,000+ נקודות נתונים. הצוות עשה עבודה נהדרת באופטימיזציה של העיבוד.",
-    startTime: 38,
-  },
-  {
-    id: "5",
-    speaker: "אמה ווטסון",
-    timestamp: "00:52",
-    text: "מנקודת מבט של עיצוב, סיימנו את הפריסות הרספונסיביות למובייל. אני אשתף את קבצי ה-Figma ב-Slack אחרי השיחה הזו.",
-    startTime: 52,
-  },
-  {
-    id: "6",
-    speaker: "שרה כהן",
-    timestamp: "01:05",
-    text: "מושלם. בואו נוודא שנקבע מפגש סקירת עיצוב השבוע. מה לגבי המשוב מקבוצת הבטא?",
-    startTime: 65,
-  },
-  {
-    id: "7",
-    speaker: "אמה ווטסון",
-    timestamp: "01:15",
-    text: "המשוב היה חיובי באופן מכריע. המשתמשים אוהבים את אפשרויות הסינון החדשות. הדאגה היחידה הייתה סביב ניגוד הצבעים במצב כהה, שכבר טיפלנו בו.",
-    startTime: 75,
-  },
-  {
-    id: "8",
-    speaker: "מייק רודריגז",
-    timestamp: "01:30",
-    text: "אני רוצה לסמן דאגה טכנית אחת - אנחנו צריכים לדון בהגבלת קצב ה-API לפני ההשקה. המגבלות הנוכחיות עשויות לא להתמודד עם עומס המשתמשים החזוי שלנו.",
-    startTime: 90,
-  },
-  {
-    id: "9",
-    speaker: "שרה כהן",
-    timestamp: "01:45",
-    text: "תפיסה טובה. בואו נוסיף את זה לפעולות שלנו. אתה יכול להכין מספרים על העומס הצפוי והמגבלות המומלצות לפגישה הבאה שלנו?",
-    startTime: 105,
-  },
-  {
-    id: "10",
-    speaker: "מייק רודריגז",
-    timestamp: "01:55",
-    text: "בהחלט. יהיה לי ניתוח מפורט מוכן עד יום רביעי.",
-    startTime: 115,
-  },
-]
+// Helper function to format seconds to timestamp
+function formatTimestamp(seconds: number): string {
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins.toString().padStart(2, "0")}:${secs.toString().padStart(2, "0")}`
+}
 
-const mockInsights = {
-  summary:
-    "סנכרון צוות המוצר שדן בהתקדמות פיתוח לוח המחוונים, השלמת עיצוב מובייל, משוב חיובי מבטא, וחששות הגבלת קצב API לפני ההשקה.",
-  keyPoints: [
-    "רכיבי ויזואליזציית נתונים של לוח המחוונים הושלמו ומוכנים ל-QA",
-    "ביצועים מותאמים - זמני טעינה מתחת ל-2 שניות עם 10K+ נקודות נתונים",
-    "פריסות רספונסיביות למובייל הושלמו, קבצי Figma ישותפו",
-    "משוב משתמשי בטא חיובי מאוד, בעיית ניגוד במצב כהה נפתרה",
-    "הגבלת קצב API דורשת סקירה לפני ההשקה כדי להתמודד עם עומס משתמשים חזוי",
-  ],
-  actionItems: [
-    {
-      task: "קבע מפגש סקירת עיצוב השבוע",
-      assignee: "שרה כהן",
-      priority: "high",
-    },
-    {
-      task: "שתף קבצי Figma לפריסות מובייל ב-Slack",
-      assignee: "אמה ווטסון",
-      priority: "medium",
-    },
-    {
-      task: "הכן ניתוח הגבלת קצב API עד יום רביעי",
-      assignee: "מייק רודריגז",
-      priority: "high",
-    },
-  ],
-  participants: ["שרה כהן", "מייק רודריגז", "אמה ווטסון"],
-  topics: ["פיתוח לוח מחוונים", "עיצוב מובייל", "משוב בטא", "תשתית API"],
-  sentiment: "positive",
+// Helper function to format duration
+function formatDuration(seconds?: number): string {
+  if (!seconds) return "0:00"
+  const mins = Math.floor(seconds / 60)
+  const secs = Math.floor(seconds % 60)
+  return `${mins}:${secs.toString().padStart(2, "0")}`
+}
+
+// Helper function to format relative time
+function formatRelativeTime(dateString: string): string {
+  const date = new Date(dateString)
+  const now = new Date()
+  const diffMs = now.getTime() - date.getTime()
+  const diffMins = Math.floor(diffMs / 60000)
+  const diffHours = Math.floor(diffMs / 3600000)
+  const diffDays = Math.floor(diffMs / 86400000)
+
+  if (diffMins < 60) return `לפני ${diffMins} דקות`
+  if (diffHours < 24) return `לפני ${diffHours} שעות`
+  if (diffDays === 1) return "אתמול"
+  if (diffDays < 7) return `לפני ${diffDays} ימים`
+  return date.toLocaleDateString("he-IL")
 }
 
 export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
+  const [transcript, setTranscript] = useState<TranscriptDetailResponse | null>(null)
+  const [isLoading, setIsLoading] = useState(true)
+  const [error, setError] = useState<string>("")
   const [isPlaying, setIsPlaying] = useState(false)
   const [searchQuery, setSearchQuery] = useState("")
   const [activeSegment, setActiveSegment] = useState<string | null>(null)
@@ -169,12 +95,46 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
   const [isUploadModalOpen, setIsUploadModalOpen] = useState(false)
   const [speakerCount, setSpeakerCount] = useState("2")
   const [tags, setTags] = useState("")
+  const [quickActions, setQuickActions] = useState<QuickAction[]>([])
 
-  const filteredTranscript = mockTranscript.filter(
+  // Load transcript on mount
+  useEffect(() => {
+    loadTranscript()
+  }, [transcriptId])
+
+  // Load quick actions on mount
+  useEffect(() => {
+    loadQuickActions()
+  }, [])
+
+  const loadTranscript = async () => {
+    try {
+      setIsLoading(true)
+      setError("")
+      const data = await apiClient.getTranscript(transcriptId)
+      setTranscript(data)
+    } catch (err) {
+      setError(err instanceof Error ? err.message : "שגיאה בטעינת תמליל")
+    } finally {
+      setIsLoading(false)
+    }
+  }
+
+  const loadQuickActions = async () => {
+    try {
+      const response = await apiClient.getQuickActions("transcript")
+      setQuickActions(response.actions)
+    } catch (err) {
+      console.error("Failed to load quick actions:", err)
+      // Don't show error to user, just log it
+    }
+  }
+
+  const filteredTranscript = transcript?.segments.filter(
     (segment) =>
       segment.text.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      segment.speaker.toLowerCase().includes(searchQuery.toLowerCase()),
-  )
+      (segment.speaker_label && segment.speaker_label.toLowerCase().includes(searchQuery.toLowerCase())),
+  ) || []
 
   const handleSendMessage = () => {
     if (!chatInput.trim()) return
@@ -261,36 +221,31 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
     </div>
   )
 
-  const ChatSidebar = () => (
+  const ChatSidebar = () => {
+    // Helper to get icon component by name
+    const getIconComponent = (iconName: string) => {
+      const IconComponent = (LucideIcons as any)[iconName]
+      return IconComponent || LucideIcons.Circle
+    }
+
+    return (
     <div className="flex flex-col h-full" suppressHydrationWarning>
       <div className="px-5 py-4 border-b border-border/60 space-y-2">
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full justify-start h-9 text-[13px] font-medium border-border/60 bg-transparent hover:bg-muted/60 hover:text-foreground"
-          onClick={() => handleQuickAction("רשום את כל פעולות המעקב מהתמליל הזה")}
-        >
-          <ListTodo className="w-[14px] h-[14px] ml-2 text-primary" />
-          רשום פעולות מעקב
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full justify-start h-9 text-[13px] font-medium border-border/60 bg-transparent hover:bg-muted/60 hover:text-foreground"
-          onClick={() => handleQuickAction("כתוב מייל מעקב על סמך השיחה הזו")}
-        >
-          <Mail className="w-[14px] h-[14px] ml-2 text-primary" />
-          כתוב מייל מעקב
-        </Button>
-        <Button
-          variant="outline"
-          size="sm"
-          className="w-full justify-start h-9 text-[13px] font-medium border-border/60 bg-transparent hover:bg-muted/60 hover:text-foreground"
-          onClick={() => handleQuickAction("רשום את כל השאלות והתשובות מהתמליל הזה")}
-        >
-          <HelpCircle className="w-[14px] h-[14px] ml-2 text-primary" />
-          רשום שאלות ותשובות
-        </Button>
+        {quickActions.map((action) => {
+          const IconComponent = getIconComponent(action.icon)
+          return (
+            <Button
+              key={action.id}
+              variant="outline"
+              size="sm"
+              className="w-full justify-start h-9 text-[13px] font-medium border-border/60 bg-transparent hover:bg-muted/60 hover:text-foreground"
+              onClick={() => handleQuickAction(action.prompt_template)}
+            >
+              <IconComponent className="w-[14px] h-[14px] ml-2 text-primary" />
+              {action.label}
+            </Button>
+          )
+        })}
       </div>
 
       <div className="flex-1 overflow-auto px-5 py-4 space-y-4">
@@ -355,7 +310,8 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
         </div>
       </div>
     </div>
-  )
+    )
+  }
 
   const InsightsView = () => (
     <div className="max-w-4xl space-y-4">
@@ -459,6 +415,33 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
     </div>
   )
 
+  // Loading state
+  if (isLoading) {
+    return (
+      <div className="flex-1 flex items-center justify-center">
+        <Loader2 className="w-8 h-8 animate-spin text-primary" />
+      </div>
+    )
+  }
+
+  // Error state
+  if (error || !transcript) {
+    return (
+      <div className="flex-1 flex items-center justify-center p-6">
+        <Card className="p-8 max-w-md text-center">
+          <AlertCircle className="w-12 h-12 mx-auto text-destructive mb-4" />
+          <h2 className="text-[18px] font-semibold text-foreground mb-2">שגיאה בטעינת תמליל</h2>
+          <p className="text-[13px] text-muted-foreground mb-4">{error || "תמליל לא נמצא"}</p>
+          <Link href="/">
+            <Button>חזור לדף הבית</Button>
+          </Link>
+        </Card>
+      </div>
+    )
+  }
+
+  const uniqueSpeakers = Array.from(new Set(transcript.segments.map((s) => s.speaker_label).filter(Boolean)))
+
   return (
       <div className="flex-1 flex flex-col min-w-0 relative overflow-hidden">
         <div className="flex-1 overflow-auto px-6 py-6">
@@ -466,59 +449,72 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
             <div className="max-w-4xl">
               <div className="mb-6">
                 <h1 className="text-[22px] font-semibold text-foreground mb-2 tracking-tight">
-                  סנכרון שבועי - צוות המוצר
+                  {transcript.title}
                 </h1>
                 <div className="flex flex-wrap items-center gap-2 text-[12px] text-muted-foreground">
                   <span className="flex items-center gap-1.5 font-medium tabular-nums">
                     <Clock className="w-3 h-3" />
-                    45:32
+                    {formatDuration(transcript.duration)}
                   </span>
-                  <span>לפני שעתיים</span>
-                  <span className="text-muted-foreground/60">•</span>
-                  <div className="flex items-center gap-1.5">
-                    <Users className="w-3 h-3" />
-                    <span className="text-[12px] font-medium">
-                      {Array.from(new Set(mockTranscript.map((s) => s.speaker))).join(", ")}
-                    </span>
-                  </div>
+                  <span>{formatRelativeTime(transcript.created_at)}</span>
+                  {uniqueSpeakers.length > 0 && (
+                    <>
+                      <span className="text-muted-foreground/60">•</span>
+                      <div className="flex items-center gap-1.5">
+                        <Users className="w-3 h-3" />
+                        <span className="text-[12px] font-medium">
+                          {uniqueSpeakers.join(", ")}
+                        </span>
+                      </div>
+                    </>
+                  )}
                 </div>
                 <div className="flex items-center gap-2 mt-2">
-                  <Badge variant="outline" className="text-[11px] h-5 px-2 font-medium border-primary/30 text-primary">
-                    סנכרון שבועי
-                  </Badge>
+                  {transcript.folder_name && (
+                    <Badge variant="outline" className="text-[11px] h-5 px-2 font-medium border-primary/30 text-primary">
+                      {transcript.folder_name}
+                    </Badge>
+                  )}
+                  {transcript.tags.map((tag) => (
+                    <Badge key={tag} variant="outline" className="text-[11px] h-5 px-2 font-medium">
+                      {tag}
+                    </Badge>
+                  ))}
                 </div>
               </div>
 
               <div className="space-y-1">
-                {filteredTranscript.map((segment) => (
-                  <div
-                    key={segment.id}
-                    className={`flex gap-3 px-4 py-3 rounded-lg transition-all duration-150 cursor-pointer ${
-                      activeSegment === segment.id ? "bg-primary/5 shadow-sm" : "hover:bg-muted/40"
-                    }`}
-                    onClick={() => setActiveSegment(segment.id)}
-                  >
-                    <div className="flex-shrink-0">
-                      <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
-                        <span className="text-[11px] font-semibold text-primary">
-                          {segment.speaker
-                            .split(" ")
-                            .map((n) => n[0])
-                            .join("")}
-                        </span>
+                {filteredTranscript.map((segment) => {
+                  const speakerLabel = segment.speaker_label || "דובר"
+                  const speakerInitials = speakerLabel.split(" ").map((n) => n[0]).join("")
+
+                  return (
+                    <div
+                      key={segment.id}
+                      className={`flex gap-3 px-4 py-3 rounded-lg transition-all duration-150 cursor-pointer ${
+                        activeSegment === segment.id ? "bg-primary/5 shadow-sm" : "hover:bg-muted/40"
+                      }`}
+                      onClick={() => setActiveSegment(segment.id)}
+                    >
+                      <div className="flex-shrink-0">
+                        <div className="w-9 h-9 rounded-full bg-primary/10 flex items-center justify-center">
+                          <span className="text-[11px] font-semibold text-primary">
+                            {speakerInitials}
+                          </span>
+                        </div>
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 mb-1">
+                          <span className="text-[13px] font-semibold text-foreground truncate">{speakerLabel}</span>
+                          <span className="text-[11px] text-muted-foreground font-mono flex-shrink-0 tabular-nums">
+                            {formatTimestamp(segment.start_time)}
+                          </span>
+                        </div>
+                        <p className="text-[14px] text-foreground/90 leading-relaxed">{segment.text}</p>
                       </div>
                     </div>
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-2 mb-1">
-                        <span className="text-[13px] font-semibold text-foreground truncate">{segment.speaker}</span>
-                        <span className="text-[11px] text-muted-foreground font-mono flex-shrink-0 tabular-nums">
-                          {segment.timestamp}
-                        </span>
-                      </div>
-                      <p className="text-[14px] text-foreground/90 leading-relaxed">{segment.text}</p>
-                    </div>
-                  </div>
-                ))}
+                  )
+                })}
               </div>
             </div>
           ) : (

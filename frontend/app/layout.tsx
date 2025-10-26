@@ -2,7 +2,8 @@ import type React from "react"
 import type { Metadata } from "next"
 import { Inter, Geist_Mono } from "next/font/google"
 import { Analytics } from "@vercel/analytics/next"
-import { AppLayout } from "@/components/app-layout"
+import { ConditionalLayout } from "@/components/conditional-layout"
+import { AuthProvider } from "@/lib/auth-context"
 import "./globals.css"
 
 const _inter = Inter({ subsets: ["latin"] })
@@ -22,7 +23,9 @@ export default function RootLayout({
   return (
     <html lang="he" dir="rtl">
       <body className={`font-sans antialiased`} suppressHydrationWarning>
-        <AppLayout>{children}</AppLayout>
+        <AuthProvider>
+          <ConditionalLayout>{children}</ConditionalLayout>
+        </AuthProvider>
         <Analytics />
       </body>
     </html>
