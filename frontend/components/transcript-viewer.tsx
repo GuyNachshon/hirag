@@ -604,7 +604,8 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
                     onClick={() => setIsUploadModalOpen(true)}
                   >
                     <AudioWaveform className="w-[20px] h-[20px] text-foreground group-hover:text-primary transition-colors" strokeWidth={2.5} />
-                  </Button>                </TooltipTrigger>
+                  </Button>
+                </TooltipTrigger>
                 <TooltipContent>
                   <p>תמליל חדש</p>
                 </TooltipContent>
