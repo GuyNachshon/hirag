@@ -1155,6 +1155,12 @@ class TranscriptionChatService:
                     )
                     reasoning = message.reasoning_content
 
+                    # DEBUG: Log actual reasoning_content to understand what we're getting
+                    self.logger.main_logger.info(
+                        f"DEBUG reasoning_content - length: {len(reasoning)}, "
+                        f"first 500 chars: {reasoning[:500] if len(reasoning) > 500 else reasoning}"
+                    )
+
                     # Try to extract final answer using markers
                     answer_markers = [
                         "\n\nתשובה:", "\n\nAnswer:", "\n\nסיכום:", "\n\nSummary:",
@@ -1184,6 +1190,12 @@ class TranscriptionChatService:
                         final_answer = final_answer[:3000] + "\n\n[...תשובה נחתכה בגלל אורך]"
 
                     content = final_answer
+
+                    # DEBUG: Log what we extracted
+                    self.logger.main_logger.info(
+                        f"DEBUG after extraction - content length: {len(content) if content else 0}, "
+                        f"is empty: {not content or not content.strip()}"
+                    )
 
                 # Return content if we have it after extraction
                 if content and content.strip():
@@ -1337,13 +1349,14 @@ class TranscriptionChatService:
 
         # Determine initial and max tokens based on request type
         # For insights generation, we need more tokens for structured JSON output
+        # GPT-OSS-20b supports 128k context, so we can be generous
         if quick_action_id == "generate_insights":
-            initial_max_tokens = 3000
-            max_total_tokens = 8000
-        else:
-            # Regular chat - start with 4000, can go up to 12000 if needed
-            initial_max_tokens = 4000
+            initial_max_tokens = 6000
             max_total_tokens = 12000
+        else:
+            # Regular chat - start higher to reduce retries (GPT-OSS needs tokens for reasoning)
+            initial_max_tokens = 6000
+            max_total_tokens = 20000
 
         self.logger.main_logger.info(
             f"Token strategy: initial={initial_max_tokens}, max={max_total_tokens}, "

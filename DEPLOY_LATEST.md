@@ -10,9 +10,12 @@
    - **Solution**: Multi-layered approach:
      1. **Extract from reasoning_content**: When `content` is empty, extract from `reasoning_content` field
      2. **Use full reasoning as answer**: For GPT-OSS, the reasoning IS the answer - use entire content if no markers found
-     3. **Retry with more tokens**: If still empty, retry with doubled tokens (4000 → 8000 → 12000)
+     3. **Retry with more tokens**: If still empty, retry with doubled tokens (6000 → 12000 → 20000)
      4. **Smart truncation**: Keep up to 3000 chars of the response
+     5. **Debug logging**: Added detailed logging to inspect `reasoning_content` during extraction
    - **Key Insight**: The model's "reasoning" contains the actual answer - it's not separate from the response
+   - **Model Specs**: GPT-OSS-20b supports 128k context length, so we can be generous with tokens
+   - **Token Strategy**: Start with 6000 tokens (enough for most reasoning chains), max 20000 for complex queries
    - **Reference**: https://huggingface.co/openai/gpt-oss-120b/discussions/67
    - This completely fixes the "LLM returned empty content" error
 
@@ -27,7 +30,7 @@
    - Generates structured insights: summary, key points, action items, topics
    - Uses comprehensive Hebrew system prompt
    - Caches results in database
-   - Now uses higher token limits (3000-8000) for better results
+   - Now uses higher token limits (6000-12000) for better results
 
 4. **Improved Chat Responses**
    - Hybrid retry logic ensures responses are never empty
@@ -204,10 +207,11 @@ curl http://localhost:8087/frontend-health
    - To install DejaVu fonts: `apt-get install fonts-dejavu`
 
 3. **Token Usage Monitoring**
-   - Check API logs for retry attempts
-   - If seeing many retries, consider increasing initial_max_tokens
-   - Current settings: Chat 4000→12000, Insights 3000→8000
+   - Check API logs for retry attempts and debug messages
+   - Debug logs now show actual `reasoning_content` for troubleshooting
+   - Current settings: Chat 6000→20000, Insights 6000→12000
    - Logs show: "LLM call attempt N/3 with max_tokens=X"
+   - Look for: "DEBUG reasoning_content - length: X" to see extraction process
 
 ## What's Fixed
 
