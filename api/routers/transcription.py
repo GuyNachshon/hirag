@@ -833,10 +833,20 @@ async def generate_insights(
         logger.main_logger.info(f"Generating insights for transcript {transcript_id}")
         start_time = time.time()
 
+        # Truncate transcript if too long (rough estimate: 1 token ≈ 4 chars)
+        # Max context: ~15000 tokens (60000 chars), leaving room for response
+        max_context_chars = 60000
+        transcript_text = transcript.full_text
+        if len(transcript_text) > max_context_chars:
+            logger.main_logger.warning(
+                f"Transcript too long ({len(transcript_text)} chars), truncating to {max_context_chars} chars"
+            )
+            transcript_text = transcript_text[:max_context_chars] + "\n\n[...תמליל נחתך בגלל אורך]"
+
         # Generate insights using LLM
         insights = await transcription_chat_service.generate_response(
             user_message="",  # Not needed for insights
-            context=transcript.full_text,
+            context=transcript_text,
             conversation_history=[],
             quick_action_id="generate_insights"  # Special ID for insights generation
         )
