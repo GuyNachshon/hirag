@@ -1108,13 +1108,27 @@ class TranscriptionChatService:
         # Add current user message
         messages.append({"role": "user", "content": user_message})
 
+        # Calculate safe max_tokens based on model's max length
+        # Estimate input tokens (rough approximation: 1 token ≈ 4 characters)
+        estimated_input_chars = sum(len(str(msg.get("content", ""))) for msg in messages)
+        estimated_input_tokens = estimated_input_chars // 4
+
+        # Model max length is 4096, leave room for response
+        model_max_length = 4096
+        max_response_tokens = max(512, model_max_length - estimated_input_tokens - 100)  # 100 token buffer
+
+        self.logger.main_logger.info(
+            f"Token estimation - Input chars: {estimated_input_chars}, "
+            f"Est. input tokens: {estimated_input_tokens}, Max response tokens: {max_response_tokens}"
+        )
+
         # Call vLLM
         try:
             response = await client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=0.7,
-                max_tokens=2048
+                max_tokens=max_response_tokens
             )
 
             return response.choices[0].message.content
