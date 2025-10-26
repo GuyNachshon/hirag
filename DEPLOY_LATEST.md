@@ -8,15 +8,17 @@
    - **Problem**: GPT-OSS reasoning model returns answers in `reasoning_content` field, not `content` field
    - **Root Cause**: GPT-OSS models use Chain-of-Thought reasoning. With `include_reasoning=false`, they put ALL tokens into internal reasoning and return empty `content`
    - **Solution**: Multi-layered approach:
-     1. **Extract from reasoning_content**: When `content` is empty, extract from `reasoning_content` field
-     2. **Use full reasoning as answer**: For GPT-OSS, the reasoning IS the answer - use entire content if no markers found
-     3. **Retry with more tokens**: If still empty, retry with doubled tokens (12000 → 24000 → 40000)
-     4. **Smart truncation**: Keep up to 3000 chars of the response
-     5. **Debug logging**: Added detailed logging to inspect `reasoning_content` during extraction
-   - **Key Insight**: The model's "reasoning" contains the actual answer - it's not separate from the response
+     1. **Set include_reasoning=True**: Include reasoning in content field instead of separate reasoning_content
+     2. **Use reasoning_effort parameter**: Control reasoning depth ("low" for chat, "medium" for insights)
+     3. **Generous token allocation**: Start with 12000 tokens to accommodate reasoning chains
+     4. **Retry with more tokens**: If still empty, retry with doubled tokens (12000 → 24000 → 40000)
+     5. **Fallback extraction**: Extract from reasoning_content if content is still empty
+   - **Key Insight**: With `include_reasoning=True` and `reasoning_effort=low`, responses are faster and appear in `content` field
    - **Model Specs**: GPT-OSS-20b supports 128k context length, so we can be generous with tokens
-   - **Token Strategy**: Start with 12000 tokens (testing showed 8000 works, 12000 is safer), max 40000 for complex queries
-   - **Real-world Results**: 4000 tokens = empty, 8000 tokens = success with 1145 chars
+   - **Token Strategy**:
+     - Chat: 12000 initial, 40000 max, reasoning_effort="low"
+     - Insights: 12000 initial, 24000 max, reasoning_effort="medium"
+   - **Real-world Results**: 12000 tokens with reasoning_effort="low" should work on first attempt
    - **Reference**: https://huggingface.co/openai/gpt-oss-120b/discussions/67
    - This completely fixes the "LLM returned empty content" error
 
@@ -109,10 +111,10 @@ docker logs -f rag-api --tail 100
 ```
 
 **What to look for in logs:**
-- Token strategy should show `initial=12000, max=40000` (not 4000, 12000)
-- Should see "DEBUG reasoning_content - length: X, first 500 chars: ..."
-- Should see "include_reasoning=false didn't work, using reasoning_content as response"
-- Should NOT need retries anymore (12000 tokens should be enough based on testing)
+- Token strategy should show `initial=12000, max=40000, reasoning_effort=low`
+- For chat: Should get response on **first attempt** (no retries)
+- Response should have content immediately (not empty on first try)
+- Much faster responses due to reasoning_effort=low
 
 ### Full Deployment (When Frontend Also Changed)
 
