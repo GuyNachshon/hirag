@@ -1353,8 +1353,8 @@ class TranscriptionChatService:
         # GPT-OSS-20b supports 128k context, so we can be VERY generous
         # Model needs tokens for chain-of-thought reasoning, so start high to avoid retries
         if quick_action_id == "generate_insights":
-            initial_max_tokens = 12000
-            max_total_tokens = 24000
+            initial_max_tokens = 20000  # Higher for structured JSON output
+            max_total_tokens = 40000
             reasoning_effort = "medium"  # Medium effort for structured insights
         else:
             # Regular chat - start with plenty of tokens (8000 worked, so 12000 should be safe)

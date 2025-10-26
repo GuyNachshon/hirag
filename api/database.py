@@ -118,6 +118,9 @@ class Transcript(Base):
     speaker_names_json = Column(Text, nullable=True)  # JSON mapping SPEAKER_XX -> name
     embeddings_generated = Column(Boolean, default=False)  # Track if segment embeddings exist
 
+    # AI-generated insights (JSON stored as text)
+    insights = Column(Text, nullable=True)  # JSON with summary, key_points, action_items, topics
+
     # Timestamps
     created_at = Column(DateTime, default=datetime.utcnow)
     updated_at = Column(DateTime, default=datetime.utcnow, onupdate=datetime.utcnow)
