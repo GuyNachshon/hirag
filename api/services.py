@@ -287,25 +287,25 @@ class RAGService:
         
         # System prompt
         prompt_parts.append(
-            "You are a helpful AI assistant with access to relevant documents and information. "
-            "Use the provided context to answer questions accurately and helpfully. "
-            "If the context doesn't contain relevant information, say so clearly."
+            "אתה עוזר AI מועיל עם גישה למסמכים ולמידע רלוונטיים. "
+            "השתמש בהקשר המסופק כדי לענות על שאלות בצורה מדויקת ומועילה. "
+            "אם ההקשר לא מכיל מידע רלוונטי, אמור זאת בבירור."
         )
         
         # Add context if available
         if context.strip():
-            prompt_parts.append(f"\n\nRelevant Context:\n{context}")
-        
+            prompt_parts.append(f"\n\nהקשר רלוונטי:\n{context}")
+
         # Add conversation history (last few messages)
         if history:
-            prompt_parts.append("\n\nConversation History:")
+            prompt_parts.append("\n\nהיסטוריית שיחה:")
             for msg in history[-5:]:  # Only include last 5 messages
-                role = "Human" if msg.role == MessageRole.USER else "Assistant"
+                role = "משתמש" if msg.role == MessageRole.USER else "עוזר"
                 prompt_parts.append(f"{role}: {msg.content}")
-        
+
         # Add current user message
-        prompt_parts.append(f"\n\nHuman: {user_message}")
-        prompt_parts.append("\n\nAssistant:")
+        prompt_parts.append(f"\n\nמשתמש: {user_message}")
+        prompt_parts.append("\n\nעוזר:")
         
         return "\n".join(prompt_parts)
     
@@ -1163,25 +1163,59 @@ class TranscriptionChatService:
 
         # Call vLLM
         try:
+            # For reasoning models, set include_reasoning=false to get only final answer
+            # See: https://docs.vllm.ai/en/latest/serving/openai_compatible_server.html
             response = await client.chat.completions.create(
                 model=model,
                 messages=messages,
                 temperature=0.7,
-                max_tokens=max_response_tokens
+                max_tokens=max_response_tokens,
+                extra_body={
+                    "include_reasoning": False  # Skip chain-of-thought, return only final answer
+                }
             )
 
-            # Handle reasoning models that put content in reasoning_content field
+            # Get response content
             message = response.choices[0].message
             content = message.content
 
-            # If content is None, check if this is a reasoning model
+            # With include_reasoning=false, content should have the final answer
+            # But if it's still None, fall back to reasoning_content
             if content is None and hasattr(message, 'reasoning_content') and message.reasoning_content:
-                self.logger.main_logger.info("Using reasoning_content from reasoning model")
-                content = message.reasoning_content
+                self.logger.main_logger.warning(
+                    "include_reasoning=false didn't work, falling back to reasoning_content extraction"
+                )
+                # Try to extract the final answer from reasoning content
+                reasoning = message.reasoning_content
 
-            if content is None:
-                self.logger.main_logger.warning("LLM returned None content, using empty string")
-                return ""
+                # Try to find a clear answer section (common patterns in Hebrew and English)
+                answer_markers = [
+                    "\n\nתשובה:",
+                    "\n\nAnswer:",
+                    "\n\nסיכום:",
+                    "\n\nSummary:",
+                    "\n\nלסיכום,",
+                    "\n\nIn summary,",
+                    "\n\n---\n\n"
+                ]
+
+                final_answer = reasoning
+                for marker in answer_markers:
+                    if marker in reasoning:
+                        final_answer = reasoning.split(marker, 1)[1].strip()
+                        self.logger.main_logger.info(f"Extracted answer after marker: {marker}")
+                        break
+
+                # If reasoning is very long, take only the last portion
+                if len(final_answer) > 2000:
+                    self.logger.main_logger.info("Reasoning too long, taking last 1500 chars")
+                    final_answer = "...\n\n" + final_answer[-1500:]
+
+                content = final_answer
+
+            if content is None or content.strip() == "":
+                self.logger.main_logger.warning("LLM returned empty content")
+                return "מצטער, לא הצלחתי ליצור תשובה. אנא נסה שוב."
 
             return content
 
