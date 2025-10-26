@@ -67,11 +67,40 @@
 
 ## Deployment Steps on Remote Machine
 
-### 1. Pull Latest Code
+### Quick Update (API Only - No Frontend Rebuild Needed)
+
+If you only changed backend code (like the LLM fixes), you don't need to rebuild the frontend:
 
 ```bash
 cd ~/hirag
 git pull origin update-ui-gran
+
+# Copy updated API code to the container's mounted volume
+# (The API container mounts ~/hirag/api or source-code/api)
+cp -r ~/hirag/api/* ~/hirag/runpod-deployment/source-code/api/
+
+# Restart API container to pick up changes
+docker restart rag-api
+
+# Watch logs to verify new code is running
+docker logs -f rag-api --tail 100
+```
+
+**What to look for in logs:**
+- Token strategy should show `initial=6000, max=20000` (not 4000, 12000)
+- Should see "DEBUG reasoning_content - length: X, first 500 chars: ..."
+- Should see "include_reasoning=false didn't work, using reasoning_content as response"
+
+### Full Deployment (When Frontend Also Changed)
+
+### 1. Pull Latest Code and Update API
+
+```bash
+cd ~/hirag
+git pull origin update-ui-gran
+
+# IMPORTANT: Copy updated API code to source-code directory
+cp -r ~/hirag/api/* ~/hirag/runpod-deployment/source-code/api/
 ```
 
 ### 2. Rebuild Frontend
