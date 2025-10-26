@@ -234,18 +234,7 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
     setInsightsError("")
 
     try {
-      const response = await fetch(`${process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'}/api/transcription/${transcriptId}/insights`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      })
-
-      if (!response.ok) {
-        throw new Error(`Failed to generate insights: ${response.statusText}`)
-      }
-
-      const data = await response.json()
+      const data = await apiClient.generateInsights(transcriptId)
       setInsights(data)
     } catch (error) {
       console.error("Failed to fetch insights:", error)

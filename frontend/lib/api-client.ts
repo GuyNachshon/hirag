@@ -280,6 +280,17 @@ class APIClient {
     })
   }
 
+  async generateInsights(transcriptId: string): Promise<{
+    summary: string
+    key_points: string[]
+    action_items: string[]
+    topics: string[]
+  }> {
+    return this.request(`/api/transcription/${transcriptId}/insights`, {
+      method: 'POST',
+    })
+  }
+
   async exportTranscript(
     transcriptId: string,
     format: ExportFormat = 'txt'
