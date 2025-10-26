@@ -5,7 +5,6 @@ import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
-import { Progress } from "@/components/ui/progress"
 import { Upload, FileAudio, X, ArrowLeft, Sparkles, Check, AlertCircle } from "lucide-react"
 import Link from "next/link"
 import { useRouter } from "next/navigation"
@@ -272,13 +271,10 @@ export function UploadFlow() {
                 <div>
                   <h2 className="text-[18px] font-semibold text-foreground mb-1">מעבד עם AI</h2>
                   <p className="text-[13px] text-muted-foreground">
-                    אנחנו ממלילים את האודיו ומייצרים תובנות
+                    אנחנו מתמללים את האודיו ומייצרים תובנות
                   </p>
-                </div>
-                <div className="space-y-2">
-                  <Progress value={progress} className="h-1.5" />
-                  <p className="text-[12px] text-muted-foreground font-medium tabular-nums">
-                    {progress}% הושלם
+                  <p className="text-[12px] text-muted-foreground mt-2">
+                    זה עשוי לקחת מספר רגעים...
                   </p>
                 </div>
               </div>

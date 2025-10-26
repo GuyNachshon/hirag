@@ -1,6 +1,7 @@
 "use client"
 
 import { useState, useEffect } from "react"
+import { usePathname } from "next/navigation"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
@@ -107,16 +108,32 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
   }, [user])
 
-  // Create chat session when user or folder changes
+  // Get current path to detect context
+  const pathname = usePathname()
+
+  // Detect if we're on a transcript page
+  const transcriptMatch = pathname?.match(/^\/transcript\/([^\/]+)/)
+  const currentTranscriptId = transcriptMatch?.[1]
+
+  // Create chat session when user, folder, or transcript changes
   useEffect(() => {
     const createChatSession = async () => {
       if (!user) return
 
       try {
-        // Default to "all transcripts" context (no specific folder)
-        // In the future, we can make this smarter to detect transcript view
-        const contextId = selectedFolder || "all"
-        const contextType = "folder"
+        // Detect context based on current page
+        let contextType: "folder" | "transcript"
+        let contextId: string
+
+        if (currentTranscriptId) {
+          // We're viewing a specific transcript
+          contextType = "transcript"
+          contextId = currentTranscriptId
+        } else {
+          // We're in folder/library view
+          contextType = "folder"
+          contextId = selectedFolder || "all"
+        }
 
         console.log("[AppLayout] Creating chat session:", { contextType, contextId })
         const session = await apiClient.createTranscriptionChatSession(
@@ -134,7 +151,7 @@ export function AppLayout({ children }: AppLayoutProps) {
     }
 
     createChatSession()
-  }, [user, selectedFolder])
+  }, [user, selectedFolder, currentTranscriptId])
 
   const handleLogout = () => {
     logout()
@@ -223,8 +240,17 @@ export function AppLayout({ children }: AppLayoutProps) {
     setIsSendingMessage(true)
 
     try {
-      const contextId = selectedFolder || "all"
-      const contextType = "folder"
+      // Use the same context detection logic
+      let contextType: "folder" | "transcript"
+      let contextId: string
+
+      if (currentTranscriptId) {
+        contextType = "transcript"
+        contextId = currentTranscriptId
+      } else {
+        contextType = "folder"
+        contextId = selectedFolder || "all"
+      }
 
       console.log("[AppLayout] Sending message:", { sessionId: chatSessionId, contextType, contextId })
 

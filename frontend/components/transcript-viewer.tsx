@@ -505,7 +505,7 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
                         <div className="flex items-center gap-2 mb-1">
                           <span className="text-[13px] font-semibold text-foreground truncate">{speakerLabel}</span>
                           <span className="text-[11px] text-muted-foreground font-mono flex-shrink-0 tabular-nums">
-                            {formatTimestamp(segment.start_time)}
+                            {formatTimestamp(segment.start)}
                           </span>
                         </div>
                         <p className="text-[14px] text-foreground/90 leading-relaxed">{segment.text}</p>
