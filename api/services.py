@@ -1148,31 +1148,8 @@ class TranscriptionChatService:
                     f"has_reasoning: {hasattr(message, 'reasoning_content')}"
                 )
 
-                # Check if we need to retry due to token limit
-                if (content is None or content.strip() == "") and finish_reason == "length":
-                    if attempt < max_retries - 1:
-                        # Double the tokens for next attempt
-                        new_max_tokens = min(max_tokens * 2, max_total_tokens)
-
-                        if new_max_tokens > max_tokens:
-                            self.logger.main_logger.warning(
-                                f"Empty response due to token limit. Retrying with max_tokens={new_max_tokens}"
-                            )
-                            max_tokens = new_max_tokens
-                            continue
-                        else:
-                            self.logger.main_logger.error(
-                                f"Hit max_total_tokens limit ({max_total_tokens}), cannot retry"
-                            )
-                            break
-                    else:
-                        self.logger.main_logger.error(
-                            f"Max retries reached, still getting empty response"
-                        )
-                        break
-
-                # Fallback to reasoning_content if needed
-                if content is None and hasattr(message, 'reasoning_content') and message.reasoning_content:
+                # Fallback to reasoning_content if content is empty (BEFORE checking retry)
+                if (content is None or content.strip() == "") and hasattr(message, 'reasoning_content') and message.reasoning_content:
                     self.logger.main_logger.warning(
                         "include_reasoning=false didn't work, extracting from reasoning_content"
                     )
@@ -1198,15 +1175,37 @@ class TranscriptionChatService:
 
                     content = final_answer
 
-                # Return content if we have it
+                # Return content if we have it after extraction
                 if content and content.strip():
                     self.logger.main_logger.info(
                         f"Successfully generated response with {len(content)} characters"
                     )
                     return content
 
-                # If we got here with empty content but no length limit, it's an error
-                if finish_reason != "length":
+                # If still empty after trying reasoning_content extraction, check if we should retry
+                if finish_reason == "length":
+                    if attempt < max_retries - 1:
+                        # Double the tokens for next attempt
+                        new_max_tokens = min(max_tokens * 2, max_total_tokens)
+
+                        if new_max_tokens > max_tokens:
+                            self.logger.main_logger.warning(
+                                f"Still empty after reasoning extraction. Retrying with max_tokens={new_max_tokens}"
+                            )
+                            max_tokens = new_max_tokens
+                            continue
+                        else:
+                            self.logger.main_logger.error(
+                                f"Hit max_total_tokens limit ({max_total_tokens}), cannot retry"
+                            )
+                            break
+                    else:
+                        self.logger.main_logger.error(
+                            f"Max retries reached, still getting empty response"
+                        )
+                        break
+                else:
+                    # Empty response but not due to length limit
                     self.logger.main_logger.warning(
                         f"Empty response with finish_reason={finish_reason}, not retrying"
                     )
