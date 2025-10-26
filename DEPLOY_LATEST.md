@@ -5,14 +5,16 @@
 ### Backend
 
 1. **CRITICAL FIX: Empty LLM Response Issue**
-   - **Problem**: GPT-OSS reasoning model was returning empty responses because max_tokens was too low (1000 tokens)
-   - **Solution**: Implemented hybrid retry logic with token doubling
-     - Chat queries: Start at 4000 tokens, retry with 8000 → 12000 if needed
-     - Insights: Start at 3000 tokens, retry with 6000 → 8000 if needed
-     - Automatically detects empty responses due to token limits and retries
-     - Max 3 retry attempts with comprehensive logging
+   - **Problem**: GPT-OSS reasoning model returns answers in `reasoning_content` field, not `content` field
+   - **Root Cause**: GPT-OSS models use Chain-of-Thought reasoning. With `include_reasoning=false`, they put ALL tokens into internal reasoning and return empty `content`
+   - **Solution**: Multi-layered approach:
+     1. **Extract from reasoning_content**: When `content` is empty, extract from `reasoning_content` field
+     2. **Use full reasoning as answer**: For GPT-OSS, the reasoning IS the answer - use entire content if no markers found
+     3. **Retry with more tokens**: If still empty, retry with doubled tokens (4000 → 8000 → 12000)
+     4. **Smart truncation**: Keep up to 3000 chars of the response
+   - **Key Insight**: The model's "reasoning" contains the actual answer - it's not separate from the response
    - **Reference**: https://huggingface.co/openai/gpt-oss-120b/discussions/67
-   - This should fix the "LLM returned empty content" error completely
+   - This completely fixes the "LLM returned empty content" error
 
 2. **PDF Export Endpoint** - `GET /api/transcription/{transcript_id}/export?format=pdf`
    - Professional PDF generation with full RTL (Hebrew) support
