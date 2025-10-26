@@ -1,29 +1,30 @@
-# frontend
+# AI transcription web app
 
-This template should help get you started developing with Vue 3 in Vite.
+*Automatically synced with your [v0.app](https://v0.app) deployments*
 
-## Recommended IDE Setup
+[![Deployed on Vercel](https://img.shields.io/badge/Deployed%20on-Vercel-black?style=for-the-badge&logo=vercel)](https://vercel.com/guynachshons-projects/v0-ai-transcription-web-app)
+[![Built with v0](https://img.shields.io/badge/Built%20with-v0.app-black?style=for-the-badge)](https://v0.app/chat/projects/UnfgwZFzLeU)
 
-[VSCode](https://code.visualstudio.com/) + [Volar](https://marketplace.visualstudio.com/items?itemName=Vue.volar) (and disable Vetur).
+## Overview
 
-## Customize configuration
+This repository will stay in sync with your deployed chats on [v0.app](https://v0.app).
+Any changes you make to your deployed app will be automatically pushed to this repository from [v0.app](https://v0.app).
 
-See [Vite Configuration Reference](https://vite.dev/config/).
+## Deployment
 
-## Project Setup
+Your project is live at:
 
-```sh
-npm install
-```
+**[https://vercel.com/guynachshons-projects/v0-ai-transcription-web-app](https://vercel.com/guynachshons-projects/v0-ai-transcription-web-app)**
 
-### Compile and Hot-Reload for Development
+## Build your app
 
-```sh
-npm run dev
-```
+Continue building your app on:
 
-### Compile and Minify for Production
+**[https://v0.app/chat/projects/UnfgwZFzLeU](https://v0.app/chat/projects/UnfgwZFzLeU)**
 
-```sh
-npm run build
-```
+## How It Works
+
+1. Create and modify your project using [v0.app](https://v0.app)
+2. Deploy your chats from the v0 interface
+3. Changes are automatically pushed to this repository
+4. Vercel deploys the latest version from this repository

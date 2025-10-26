@@ -1,6 +1,0 @@
-  docker run -d \
-      --name rag-frontend \
-      --network rag-network \
-      --restart unless-stopped \
-      -p 8087:8087 \
-      rag-frontend-fixed:latest
