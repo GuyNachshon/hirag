@@ -5,9 +5,11 @@ and optional embedding-based search.
 """
 
 from fastapi import APIRouter, HTTPException, Depends
+from fastapi.responses import StreamingResponse
 from sqlalchemy.orm import Session
 import time
 import uuid
+import json
 from datetime import datetime
 
 from ..database import get_db
@@ -191,6 +193,111 @@ async def send_message(
             status_code=500,
             detail=f"Failed to process message: {str(e)}"
         )
+
+
+@router.post("/{session_id}/message/stream")
+async def send_message_stream(
+    session_id: str,
+    request: TranscriptionChatMessageRequest,
+    current_user=Depends(get_current_user),
+    db: Session = Depends(get_db),
+    service: TranscriptionChatService = Depends(get_transcription_chat_service)
+):
+    """
+    Send a message and stream the AI response in real-time.
+    Returns Server-Sent Events (SSE) stream.
+    """
+
+    async def generate_stream():
+        start_time = time.time()
+        full_response = ""
+
+        try:
+            # Verify session exists
+            session = service.get_session(session_id)
+            if not session:
+                yield f"data: {json.dumps({'error': 'Session not found'})}\n\n"
+                return
+
+            logger.main_logger.info(
+                f"Processing streaming chat message for session {session_id}: "
+                f"{request.content[:50]}..."
+            )
+
+            # Add user message to history
+            service.add_message(session_id, "user", request.content)
+
+            # Send initial status
+            yield f"data: {json.dumps({'type': 'status', 'status': 'processing'})}\n\n"
+
+            # Get adaptive context
+            context_result = await service.get_adaptive_context(
+                context_type=request.context_type,
+                context_id=request.context_id,
+                user_message=request.content,
+                user_id=current_user.id,
+                db=db
+            )
+
+            # Send context info
+            yield f"data: {json.dumps({'type': 'context', 'strategy': context_result['strategy']})}\n\n"
+
+            # Get conversation history
+            conversation_history = service.get_messages(session_id)[:-1]
+
+            # Generate streaming response
+            async for chunk in service.generate_response_stream(
+                user_message=request.content,
+                context=context_result["context"],
+                conversation_history=conversation_history,
+                quick_action_id=request.quick_action_id
+            ):
+                full_response += chunk
+                yield f"data: {json.dumps({'type': 'content', 'content': chunk})}\n\n"
+
+            # Add assistant message to history
+            service.add_message(
+                session_id,
+                "assistant",
+                full_response,
+                strategy_used=context_result["strategy"],
+                sources=context_result["sources"]
+            )
+
+            processing_time = time.time() - start_time
+
+            # Send completion
+            yield f"data: {json.dumps({'type': 'done', 'processing_time': processing_time, 'sources': context_result['sources']})}\n\n"
+
+            # Log performance
+            logger.log_performance(
+                operation="transcription_chat_message_stream",
+                duration=processing_time,
+                metadata={
+                    "session_id": session_id,
+                    "strategy_used": context_result["strategy"],
+                    "sources_count": len(context_result["sources"]),
+                    "message_length": len(request.content),
+                    "response_length": len(full_response)
+                }
+            )
+
+        except Exception as e:
+            import traceback
+            tb = traceback.format_exc()
+            logger.main_logger.error(f"Streaming chat error: {e}")
+            logger.main_logger.error(f"Traceback: {tb}")
+            yield f"data: {json.dumps({'type': 'error', 'error': str(e)})}\n\n"
+
+    return StreamingResponse(
+        generate_stream(),
+        media_type="text/event-stream",
+        headers={
+            "Cache-Control": "no-cache",
+            "Connection": "keep-alive",
+            "X-Accel-Buffering": "no"  # Disable nginx buffering
+        }
+    )
 
 
 @router.get("/{session_id}/history", response_model=TranscriptionChatHistory)

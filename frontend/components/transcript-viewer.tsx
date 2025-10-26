@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useEffect } from "react"
+import { useState, useEffect, useRef } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
@@ -31,9 +31,12 @@ import {
   Text,
   Loader2,
   AlertCircle,
+  GripVertical,
 } from "lucide-react"
 import * as LucideIcons from "lucide-react"
 import Link from "next/link"
+import ReactMarkdown from "react-markdown"
+import remarkGfm from "remark-gfm"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
 import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/components/ui/tooltip"
@@ -45,6 +48,7 @@ interface ChatMessage {
   role: "user" | "assistant"
   content: string
   timestamp: Date
+  isLoading?: boolean
 }
 
 // Helper function to format seconds to timestamp
@@ -94,11 +98,31 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
   const [speakerCount, setSpeakerCount] = useState("2")
   const [tags, setTags] = useState("")
   const [quickActions, setQuickActions] = useState<QuickAction[]>([])
+  const [chatSessionId, setChatSessionId] = useState<string | null>(null)
+  const [rightPanelWidth, setRightPanelWidth] = useState(400) // Default width in pixels
+  const [isResizing, setIsResizing] = useState(false)
+  const [isSendingMessage, setIsSendingMessage] = useState(false)
 
   // Load transcript on mount
   useEffect(() => {
     loadTranscript()
   }, [transcriptId])
+
+  // Create chat session on mount
+  useEffect(() => {
+    if (transcriptId) {
+      createChatSession()
+    }
+  }, [transcriptId])
+
+  const createChatSession = async () => {
+    try {
+      const session = await apiClient.createTranscriptionChatSession("transcript", transcriptId)
+      setChatSessionId(session.session_id)
+    } catch (error) {
+      console.error("Failed to create chat session:", error)
+    }
+  }
 
   // Load quick actions on mount
   useEffect(() => {
@@ -134,9 +158,10 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
       (segment.speaker_label && segment.speaker_label.toLowerCase().includes(searchQuery.toLowerCase())),
   ) || []
 
-  const handleSendMessage = () => {
-    if (!chatInput.trim()) return
+  const handleSendMessage = async () => {
+    if (!chatInput.trim() || !chatSessionId || isSendingMessage) return
 
+    setIsSendingMessage(true)
     const userMessage: ChatMessage = {
       id: Date.now().toString(),
       role: "user",
@@ -144,19 +169,51 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
       timestamp: new Date(),
     }
 
+    // Add user message immediately
     setChatMessages((prev) => [...prev, userMessage])
+    const currentInput = chatInput
     setChatInput("")
 
-    setTimeout(() => {
-      const aiMessage: ChatMessage = {
-        id: (Date.now() + 1).toString(),
-        role: "assistant",
-        content:
-          "בהתבסס על התמליל, אני יכול לעזור לך עם זה. הצוות דן בהתקדמות פיתוח לוח המחוונים, כאשר מייק רודריגז דיווח שרכיבי ויזואליזציית הנתונים הושלמו והביצועים מותאמים למתחת ל-2 שניות עבור 10K+ נקודות נתונים.",
-        timestamp: new Date(),
-      }
-      setChatMessages((prev) => [...prev, aiMessage])
-    }, 1000)
+    // Add loading message
+    const loadingMessage: ChatMessage = {
+      id: (Date.now() + 1).toString(),
+      role: "assistant",
+      content: "",
+      timestamp: new Date(),
+      isLoading: true,
+    }
+    setChatMessages((prev) => [...prev, loadingMessage])
+
+    try {
+      // Send message to API
+      const response = await apiClient.sendTranscriptionChatMessage(
+        chatSessionId,
+        currentInput,
+        "transcript",
+        transcriptId
+      )
+
+      // Replace loading message with actual response
+      setChatMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === loadingMessage.id
+            ? { ...msg, content: response.content, isLoading: false }
+            : msg
+        )
+      )
+    } catch (error) {
+      console.error("Failed to send message:", error)
+      // Replace loading message with error
+      setChatMessages((prev) =>
+        prev.map((msg) =>
+          msg.id === loadingMessage.id
+            ? { ...msg, content: "מצטער, נתקלתי בשגיאה. אנא נסה שוב.", isLoading: false }
+            : msg
+        )
+      )
+    } finally {
+      setIsSendingMessage(false)
+    }
   }
 
   const handleQuickAction = (prompt: string) => {
@@ -266,9 +323,20 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
                     : "bg-muted/60 text-foreground border border-border/40"
                 }`}
               >
-                <p className="text-[13px] leading-relaxed">{message.content}</p>
+                {message.isLoading ? (
+                  <div className="flex items-center gap-2">
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span className="text-[13px] text-muted-foreground">מייצר תשובה...</span>
+                  </div>
+                ) : message.role === "assistant" ? (
+                  <div className="prose prose-sm max-w-none dark:prose-invert prose-p:my-2 prose-ul:my-2 prose-ol:my-2 prose-li:my-0.5">
+                    <ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>
+                  </div>
+                ) : (
+                  <p className="text-[13px] leading-relaxed">{message.content}</p>
+                )}
               </div>
-              {message.role === "assistant" && (
+              {message.role === "assistant" && !message.isLoading && (
                 <div className="w-7 h-7 rounded-full bg-primary/10 flex items-center justify-center flex-shrink-0 mt-0.5">
                   <Sparkles className="w-[13px] h-[13px] text-primary" />
                 </div>

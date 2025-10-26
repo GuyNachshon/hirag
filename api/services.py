@@ -1225,3 +1225,97 @@ class TranscriptionChatService:
             self.logger.main_logger.error(f"Full traceback: {traceback.format_exc()}")
             self.logger.main_logger.error(f"Base URL: {base_url}, Model: {model}")
             return f"מצטער, נתקלתי בשגיאה ביצירת התשובה: {str(e)}"
+
+    async def generate_response_stream(
+        self,
+        user_message: str,
+        context: str,
+        conversation_history: List[Dict[str, Any]],
+        quick_action_id: Optional[str] = None
+    ):
+        """
+        Generate a streaming response from the LLM.
+        Yields chunks of text as they are generated.
+        """
+        # Get vLLM configuration
+        base_url = self.config.get("VLLM", {}).get("llm", {}).get("base_url")
+        model = self.config.get("VLLM", {}).get("llm", {}).get("model")
+        api_key = self.config.get("VLLM", {}).get("api_key", "dummy-key")
+
+        if not base_url or not model:
+            self.logger.main_logger.error("vLLM configuration missing")
+            yield "שגיאה: תצורת vLLM חסרה"
+            return
+
+        from openai import AsyncOpenAI
+
+        client = AsyncOpenAI(api_key=str(api_key), base_url=base_url)
+
+        # Construct system prompt (same as non-streaming)
+        system_prompt = """אתה עוזר AI המסייע למשתמשים לנתח תמלולי פגישות.
+
+היכולות שלך:
+- סיכום פגישות וחילוץ נקודות מפתח
+- זיהוי משימות והחלטות
+- מענה על שאלות לגבי מה שנדון
+- מציאת מידע ספציפי בשיחות
+- זיהוי דפוסים במספר פגישות
+
+הנחיות:
+- היה תמציתי ומדויק
+- צטט ישירות מהתמלולים כשרלוונטי
+- כלול חותמות זמן כשמתייחס לרגעים ספציפיים
+- אם המידע לא נמצא בהקשר המסופק, אמור זאת בבירור
+- תמוך בעברית ובאנגלית באופן שווה
+"""
+
+        # Build messages
+        messages = [{"role": "system", "content": system_prompt}]
+
+        # Add context
+        if context:
+            messages.append({
+                "role": "system",
+                "content": f"הקשר רלוונטי:\n\n{context}"
+            })
+
+        # Add conversation history (last 5 messages)
+        for msg in conversation_history[-5:]:
+            messages.append({
+                "role": msg["role"],
+                "content": msg["content"]
+            })
+
+        # Add current user message
+        messages.append({"role": "user", "content": user_message})
+
+        # Calculate max tokens
+        max_model_length = 4096
+        estimated_input = sum(len(str(m.get("content", ""))) for m in messages)
+        estimated_input_tokens = estimated_input // 4
+        max_response_tokens = max(100, max_model_length - estimated_input_tokens - 200)
+
+        try:
+            # Stream response from vLLM
+            stream = await client.chat.completions.create(
+                model=model,
+                messages=messages,
+                temperature=0.7,
+                max_tokens=max_response_tokens,
+                stream=True,
+                extra_body={
+                    "include_reasoning": False
+                }
+            )
+
+            async for chunk in stream:
+                if chunk.choices and len(chunk.choices) > 0:
+                    delta = chunk.choices[0].delta
+                    if delta.content:
+                        yield delta.content
+
+        except Exception as e:
+            import traceback
+            self.logger.main_logger.error(f"Error in streaming vLLM: {e}")
+            self.logger.main_logger.error(f"Traceback: {traceback.format_exc()}")
+            yield f"שגיאה: {str(e)}"

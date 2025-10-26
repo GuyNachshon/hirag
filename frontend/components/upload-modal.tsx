@@ -307,7 +307,7 @@ export function UploadModal({ open, onOpenChange, folders, initialFile }: Upload
             </div>
             <div>
               <p className="text-[15px] font-semibold">מעבד עם AI</p>
-              <p className="text-[13px] text-muted-foreground mt-1">ממליל את האודיו ומייצר תובנות</p>
+              <p className="text-[13px] text-muted-foreground mt-1">מתמלל את האודיו ומייצר תובנות</p>
             </div>
             <div className="space-y-2">
               <Progress value={progress} className="h-1.5" />
