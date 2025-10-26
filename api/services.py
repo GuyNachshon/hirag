@@ -1132,7 +1132,7 @@ class TranscriptionChatService:
                     temperature=temperature,
                     max_tokens=max_tokens,
                     extra_body={
-                        "include_reasoning": False  # Skip chain-of-thought, return only final answer
+                        "include_reasoning": True  # Include reasoning for GPT-OSS models
                     }
                 )
 
