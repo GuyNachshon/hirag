@@ -557,14 +557,7 @@ export function AppLayout({ children }: AppLayoutProps) {
 
               <div className="border-t border-border/60 p-4">
                 <div className="flex gap-2">
-                  <Button
-                    size="icon"
-                    className="h-9 w-9 flex-shrink-0"
-                    onClick={handleSendMessage}
-                    disabled={!chatInput.trim() || isSendingMessage || !chatSessionId}
-                  >
-                    <Send className="w-[14px] h-[14px] scale-x-[-1]" />
-                  </Button>
+
                   <div className="flex-1 relative">
                     <Input
                       placeholder="שוחח עם כל התמלילים"
@@ -582,6 +575,14 @@ export function AppLayout({ children }: AppLayoutProps) {
                       <Paperclip className="w-[14px] h-[14px] text-muted-foreground" />
                     </Button>
                   </div>
+                  <Button
+                    size="icon"
+                    className="h-9 w-9 flex-shrink-0"
+                    onClick={handleSendMessage}
+                    disabled={!chatInput.trim() || isSendingMessage || !chatSessionId}
+                  >
+                    <Send className="w-[14px] h-[14px] scale-x-[-1]" />
+                  </Button>
                 </div>
               </div>
             </div>
