@@ -3,35 +3,62 @@
 ## Changes in this Deployment
 
 ### Backend
-1. **Insights Generation Endpoint** - `POST /api/transcription/{transcript_id}/insights`
+
+1. **CRITICAL FIX: Empty LLM Response Issue**
+   - **Problem**: GPT-OSS reasoning model was returning empty responses because max_tokens was too low (1000 tokens)
+   - **Solution**: Implemented hybrid retry logic with token doubling
+     - Chat queries: Start at 4000 tokens, retry with 8000 → 12000 if needed
+     - Insights: Start at 3000 tokens, retry with 6000 → 8000 if needed
+     - Automatically detects empty responses due to token limits and retries
+     - Max 3 retry attempts with comprehensive logging
+   - **Reference**: https://huggingface.co/openai/gpt-oss-120b/discussions/67
+   - This should fix the "LLM returned empty content" error completely
+
+2. **PDF Export Endpoint** - `GET /api/transcription/{transcript_id}/export?format=pdf`
+   - Professional PDF generation with full RTL (Hebrew) support
+   - Includes: title, metadata, insights section, full transcript with timestamps
+   - Styled with teal theme (#0D9588)
+   - Uses DejaVu Sans font for Hebrew (needs font installed on server)
+   - **New Dependencies**: reportlab, arabic-reshaper, python-bidi
+
+3. **Insights Generation Endpoint** - `POST /api/transcription/{transcript_id}/insights`
    - Generates structured insights: summary, key points, action items, topics
    - Uses comprehensive Hebrew system prompt
    - Caches results in database
+   - Now uses higher token limits (3000-8000) for better results
 
-2. **Streaming Chat** - `POST /api/transcription/chat/{session_id}/message/stream`
-   - Server-Sent Events (SSE) for real-time token streaming
-   - Ready for frontend implementation
-
-3. **Improved Chat Responses**
-   - Added `include_reasoning=false` to vLLM calls
-   - Should get cleaner, more concise responses
-   - All prompts now in Hebrew
+4. **Improved Chat Responses**
+   - Hybrid retry logic ensures responses are never empty
+   - All prompts in Hebrew
+   - Better handling of reasoning model output
 
 ### Frontend
-1. **Real Chat Integration**
-   - Creates chat session on page load
-   - Sends messages to real API
-   - Loading indicator while generating responses
 
-2. **Markdown Rendering**
-   - Chat responses now render markdown (bold, lists, code, etc.)
+1. **InsightsView - FULLY INTEGRATED**
+   - ✅ Fixed mockInsights undefined error
+   - Real API integration with POST /api/transcription/{id}/insights
+   - Loading state with spinner and "מייצר תובנות..." text
+   - Error handling with retry button
+   - Conditional rendering for all sections
+   - Auto-fetches insights when switching to insights view
+
+2. **PDF Export Button**
+   - New FileDown icon button in action buttons row
+   - Opens PDF in new tab
+   - Tooltip: "ייצא לPDF"
+   - Green hover effect matching design system
+
+3. **Chat Loading Indicator**
+   - Already implemented and working
+   - Shows Loader2 spinner with "מייצר תשובה..." while generating response
+
+4. **Button Hover Colors**
+   - Icons turn green/teal on hover
+   - Consistent across all action buttons
+
+5. **Markdown Rendering**
+   - Chat responses render markdown (bold, lists, code, etc.)
    - Custom styling for RTL support
-
-3. **Button Hover Colors**
-   - Icons now turn green/teal on hover
-   - Better visual feedback
-
-4. **InsightsView** - Partially ready (needs API integration completion)
 
 ## Deployment Steps on Remote Machine
 
@@ -95,17 +122,34 @@ docker logs -f rag-frontend --tail 50
 
 **Common mistake:** Using `http://rag-api:8080` won't work! That's only accessible inside Docker network. The browser needs the public IP.
 
-### 3. Update Backend Files (No rebuild needed - just restart)
+### 3. Install New Python Dependencies
 
 ```bash
-# Restart API to pick up changes
+# Enter the API container
+docker exec -it rag-api bash
+
+# Install new dependencies
+pip install reportlab>=4.0.0 arabic-reshaper>=3.0.0 python-bidi>=0.4.2
+
+# Exit container
+exit
+```
+
+**Note**: These are needed for PDF export with RTL (Hebrew) support.
+
+### 4. Restart API Container
+
+```bash
+# Restart API to pick up all code changes
 docker restart rag-api
 
-# Check logs
+# Check logs for any errors
 docker logs -f rag-api --tail 100
 ```
 
-### 4. Verify Everything Works
+**Important**: Watch for any import errors related to the new dependencies.
+
+### 5. Verify Everything Works
 
 ```bash
 # Test API health
@@ -118,29 +162,47 @@ curl http://localhost:8080/api/transcription/chat/health
 curl http://localhost:8087/frontend-health
 ```
 
-### 5. Test in Browser
+### 6. Test in Browser
 
 1. **Upload a new transcript** (to test with fresh data)
-2. **Test chat** - Should show loading spinner, then response with markdown
-3. **Test button hovers** - Icons should turn green
-4. **Click insights button** - Should switch view (though insights won't generate yet without completing the frontend integration)
+2. **Test chat** - Should show loading spinner "מייצר תשובה...", then response with markdown
+   - **IMPORTANT**: Responses should no longer be empty! The retry logic will automatically handle token limits
+   - Check API logs to see retry attempts if query is complex
+3. **Test button hovers** - Icons should turn green/teal
+4. **Click insights button** - Should switch view and automatically generate insights
+   - Shows loading spinner "מייצר תובנות..."
+   - Displays summary, key points, action items, topics
+   - Cached in database for subsequent views
+5. **Test PDF export** - Click FileDown button
+   - Should download PDF with Hebrew text (RTL)
+   - Includes metadata, insights, and full transcript
 
 ## Known Issues to Monitor
 
-1. **InsightsView** - Currently references `mockInsights` which doesn't exist
-   - View will switch but may show errors
-   - Need to add API call: `apiClient.generateInsights(transcriptId)`
-   - This can be fixed in next iteration
-
-2. **Speaker Diarization** - Need to verify:
+1. **Speaker Diarization** - Need to verify:
    - Check if Whisper is actually identifying speakers
    - Look at transcript segments to see if `speaker_label` is populated
    - May need to adjust Whisper service parameters
 
-3. **LLM Response Quality**
-   - With `include_reasoning=false`, responses should be cleaner
-   - Monitor if answers are complete or too brief
-   - Can adjust prompts if needed
+2. **PDF Font on Server**
+   - PDF export uses DejaVu Sans for Hebrew support
+   - Path: `/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf`
+   - If font not found, falls back to Helvetica (limited Hebrew support)
+   - To install DejaVu fonts: `apt-get install fonts-dejavu`
+
+3. **Token Usage Monitoring**
+   - Check API logs for retry attempts
+   - If seeing many retries, consider increasing initial_max_tokens
+   - Current settings: Chat 4000→12000, Insights 3000→8000
+   - Logs show: "LLM call attempt N/3 with max_tokens=X"
+
+## What's Fixed
+
+1. ✅ **Empty LLM responses** - Hybrid retry logic with token doubling
+2. ✅ **mockInsights error** - Full API integration in InsightsView
+3. ✅ **Loading indicators** - Already working, will be visible after deployment
+4. ✅ **Button hover colors** - Green/teal hover effects
+5. ✅ **PDF export** - Complete with RTL Hebrew support
 
 ## Rollback Plan
 
