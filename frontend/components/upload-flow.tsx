@@ -1,6 +1,6 @@
 "use client"
 
-import { useState, useCallback } from "react"
+import React, { useState, useCallback, useEffect } from "react"
 import { Button } from "@/components/ui/button"
 import { Card } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
@@ -32,7 +32,7 @@ export function UploadFlow() {
   )
 
   // Update step based on polling status
-  React.useEffect(() => {
+  useEffect(() => {
     if (status === "completed" && step === "processing") {
       setStep("complete")
     } else if (status === "failed" && step === "processing") {
