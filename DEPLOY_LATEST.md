@@ -282,13 +282,15 @@ curl http://localhost:8087/frontend-health
 
 ## What's Fixed
 
-1. ✅ **Empty LLM responses** - Increased tokens to 12000/40000, hybrid retry logic
+1. ✅ **Empty LLM responses** - include_reasoning=True + reasoning_effort parameter
 2. ✅ **mockInsights error** - Full API integration in InsightsView
 3. ✅ **Insights 401 error** - Now uses apiClient with proper auth headers
-4. ✅ **Markdown rendering** - Chat responses render bold, lists, code blocks (already in code)
-5. ✅ **Loading indicators** - Already working, will be visible after deployment
-6. ✅ **Button hover colors** - Green/teal hover effects
-7. ✅ **PDF export** - Complete with RTL Hebrew support
+4. ✅ **Insights AttributeError** - Added insights column to Transcript model
+5. ✅ **Insights negative max_tokens** - Truncate long transcripts to 60k chars
+6. ✅ **Markdown rendering** - Chat responses render bold, lists, code blocks
+7. ✅ **Loading indicators** - Spinner + "מייצר תשובה..." during chat
+8. ✅ **Button hover colors** - Green/teal hover effects
+9. ✅ **PDF export** - Complete with RTL Hebrew support
 
 ## Rollback Plan
 
