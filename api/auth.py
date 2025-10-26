@@ -3,15 +3,12 @@ Authentication logic for user registration, login, and password management.
 Uses bcrypt for secure password hashing.
 """
 
-from passlib.context import CryptContext
+import bcrypt
 from sqlalchemy.orm import Session
 from datetime import datetime
 import re
 
 from .database import User, create_session_token
-
-# Password hashing context
-pwd_context = CryptContext(schemes=["bcrypt"], deprecated="auto")
 
 # Password validation
 MIN_PASSWORD_LENGTH = 6
@@ -36,7 +33,11 @@ def hash_password(password: str) -> str:
     Returns:
         Hashed password string
     """
-    return pwd_context.hash(password)
+    # Bcrypt can only handle passwords up to 72 bytes
+    password_bytes = password.encode('utf-8')[:72]
+    salt = bcrypt.gensalt()
+    hashed = bcrypt.hashpw(password_bytes, salt)
+    return hashed.decode('utf-8')
 
 
 def verify_password(plain_password: str, hashed_password: str) -> bool:
@@ -50,7 +51,9 @@ def verify_password(plain_password: str, hashed_password: str) -> bool:
     Returns:
         True if password matches, False otherwise
     """
-    return pwd_context.verify(plain_password, hashed_password)
+    password_bytes = plain_password.encode('utf-8')[:72]
+    hashed_bytes = hashed_password.encode('utf-8')
+    return bcrypt.checkpw(password_bytes, hashed_bytes)
 
 
 def validate_username(username: str) -> None:
