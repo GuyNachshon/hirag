@@ -1091,7 +1091,8 @@ class TranscriptionChatService:
         initial_max_tokens: int,
         max_total_tokens: int,
         temperature: float = 0.7,
-        max_retries: int = 3
+        max_retries: int = 3,
+        reasoning_effort: str = "low"
     ) -> str:
         """
         Call LLM with automatic retry logic for reasoning models.
@@ -1132,7 +1133,8 @@ class TranscriptionChatService:
                     temperature=temperature,
                     max_tokens=max_tokens,
                     extra_body={
-                        "include_reasoning": True  # Include reasoning for GPT-OSS models
+                        "include_reasoning": True,  # Include reasoning for GPT-OSS models
+                        "reasoning_effort": reasoning_effort  # Control reasoning depth (low/medium/high)
                     }
                 )
 
@@ -1353,13 +1355,16 @@ class TranscriptionChatService:
         if quick_action_id == "generate_insights":
             initial_max_tokens = 12000
             max_total_tokens = 24000
+            reasoning_effort = "medium"  # Medium effort for structured insights
         else:
             # Regular chat - start with plenty of tokens (8000 worked, so 12000 should be safe)
             initial_max_tokens = 12000
             max_total_tokens = 40000
+            reasoning_effort = "low"  # Low effort for fast chat responses
 
         self.logger.main_logger.info(
             f"Token strategy: initial={initial_max_tokens}, max={max_total_tokens}, "
+            f"reasoning_effort={reasoning_effort}, "
             f"request_type={'insights' if quick_action_id == 'generate_insights' else 'chat'}"
         )
 
@@ -1372,7 +1377,8 @@ class TranscriptionChatService:
                 initial_max_tokens=initial_max_tokens,
                 max_total_tokens=max_total_tokens,
                 temperature=0.7,
-                max_retries=3
+                max_retries=3,
+                reasoning_effort=reasoning_effort
             )
             return content
 
