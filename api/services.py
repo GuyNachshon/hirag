@@ -310,19 +310,7 @@ class RAGService:
         return "\n".join(prompt_parts)
     
     async def _call_vllm(self, prompt: str) -> str:
-        """Call vLLM API for response generation"""tzachi@instance-20250115-200616:~/hirag$   docker inspect rag-api | grep -A 10 Mounts
-        "Mounts": [
-            {
-                "Type": "bind",
-                "Source": "/home/tzachi/hirag/runpod-deployment/data",
-                "Destination": "/app/data",
-                "Mode": "",
-                "RW": true,
-                "Propagation": "rprivate"
-            },
-            {
-                "Type": "bind",
-tzachi@instance-20250115-200616:~/hirag$
+        """Call vLLM API for response generation"""
         try:
             # Extract vLLM configuration
             vllm_config = self.config.get('VLLM', {})
