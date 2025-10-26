@@ -1057,11 +1057,15 @@ class TranscriptionChatService:
         from openai import AsyncOpenAI
 
         # Get vLLM configuration
+        self.logger.main_logger.info(f"Config keys: {self.config.keys() if self.config else 'None'}")
         vllm_config = self.config.get('VLLM', {})
+        self.logger.main_logger.info(f"VLLM config: {vllm_config}")
         llm_config = vllm_config.get('llm', {})
+        self.logger.main_logger.info(f"LLM config: {llm_config}")
         api_key = vllm_config.get('api_key', 0)
         base_url = llm_config.get('base_url', 'http://localhost:8000/v1')
         model = llm_config.get('model', 'model')
+        self.logger.main_logger.info(f"Resolved - base_url: {base_url}, model: {model}")
 
         # Create client
         client = AsyncOpenAI(api_key=str(api_key), base_url=base_url)
