@@ -1116,5 +1116,8 @@ class TranscriptionChatService:
             return response.choices[0].message.content
 
         except Exception as e:
+            import traceback
             self.logger.main_logger.error(f"Error calling vLLM: {e}")
+            self.logger.main_logger.error(f"Full traceback: {traceback.format_exc()}")
+            self.logger.main_logger.error(f"Base URL: {base_url}, Model: {model}")
             return f"מצטער, נתקלתי בשגיאה ביצירת התשובה: {str(e)}"
