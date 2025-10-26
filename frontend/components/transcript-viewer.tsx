@@ -688,9 +688,20 @@ export function TranscriptViewer({ transcriptId }: { transcriptId: string }) {
                     variant="ghost"
                     size="icon"
                     className="h-12 w-12 rounded-full shadow-lg border border-border/60 bg-card hover:bg-muted/60 hover:scale-105 transition-all group"
-                    onClick={() => {
-                      const apiUrl = process.env.NEXT_PUBLIC_API_URL || 'http://localhost:8080'
-                      window.open(`${apiUrl}/api/transcription/${transcriptId}/export?format=pdf`, '_blank')
+                    onClick={async () => {
+                      try {
+                        const blob = await apiClient.exportTranscript(transcriptId, 'pdf')
+                        const url = window.URL.createObjectURL(blob)
+                        const a = document.createElement('a')
+                        a.href = url
+                        a.download = `${transcript?.title || 'transcript'}.pdf`
+                        document.body.appendChild(a)
+                        a.click()
+                        window.URL.revokeObjectURL(url)
+                        document.body.removeChild(a)
+                      } catch (error) {
+                        console.error('Failed to export PDF:', error)
+                      }
                     }}
                   >
                     <FileDown className="w-[20px] h-[20px] text-foreground group-hover:text-primary transition-colors" strokeWidth={2.5} />
