@@ -1,0 +1,75 @@
+# Production Langflow with HiRAG Integration
+FROM python:3.11-slim
+
+WORKDIR /app
+
+# Install system dependencies
+RUN apt-get update && apt-get install -y \
+    curl \
+    git \
+    build-essential \
+    && rm -rf /var/lib/apt/lists/*
+
+# Install Langflow and dependencies (will be cached in Docker image for offline use)
+RUN pip install --no-cache-dir \
+    langflow==1.0.19 \
+    openai==1.0.0 \
+    httpx==0.27.0 \
+    pydantic==2.0.0 \
+    aiohttp==3.9.0
+
+# Create langflow user and directories
+RUN useradd -m -u 1000 langflow && \
+    mkdir -p /app/langflow && \
+    mkdir -p /app/langflow/flows && \
+    mkdir -p /app/langflow/components && \
+    mkdir -p /app/langflow/data && \
+    chown -R langflow:langflow /app/langflow
+
+# Copy custom components for HiRAG integration
+COPY langflow/custom_components/ /app/langflow/components/
+
+# Copy pre-built flows
+COPY langflow/flows/ /app/langflow/flows/
+
+# Copy startup script
+COPY langflow/start_langflow.sh /app/start_langflow.sh
+RUN chmod +x /app/start_langflow.sh
+
+# Set ownership
+RUN chown -R langflow:langflow /app
+
+# Switch to langflow user
+USER langflow
+
+# Environment variables
+ENV LANGFLOW_HOST=0.0.0.0
+ENV LANGFLOW_PORT=7860
+ENV LANGFLOW_AUTO_LOGIN=false
+ENV LANGFLOW_STORE=false
+ENV LANGFLOW_COMPONENTS_PATH=/app/langflow/components
+ENV LANGFLOW_LOAD_FLOWS_PATH=/app/langflow/flows
+
+# Service endpoints (accessible via Docker network)
+ENV HIRAG_API_URL=http://rag-api:8080
+ENV HIRAG_LLM_URL=http://hirag-llm:8000
+ENV HIRAG_EMBEDDING_URL=http://hirag-embedding:8001
+ENV HIRAG_OCR_URL=http://rag-ocr:8002
+ENV HIRAG_WHISPER_URL=http://rag-whisper:8004
+
+# vLLM configuration
+ENV VLLM_BASE_URL=http://hirag-llm:8000/v1
+ENV VLLM_API_KEY=dummy
+
+# Expose port
+EXPOSE 7860
+
+# Health check
+HEALTHCHECK --interval=30s --timeout=10s --start-period=30s --retries=3 \
+    CMD curl -f http://localhost:7860/health || exit 1
+
+# Volume for persistent data
+VOLUME ["/app/langflow/data"]
+
+# Start Langflow
+CMD ["/app/start_langflow.sh"]
