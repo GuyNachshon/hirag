@@ -62,9 +62,11 @@
    - Icons turn green/teal on hover
    - Consistent across all action buttons
 
-5. **Markdown Rendering**
-   - Chat responses render markdown (bold, lists, code, etc.)
-   - Custom styling for RTL support
+5. **Markdown Rendering** ✅ ALREADY IMPLEMENTED
+   - Chat responses render markdown using react-markdown + remark-gfm
+   - Supports: bold, italic, lists, code blocks, links, tables (full GFM)
+   - Custom prose styling for RTL Hebrew support
+   - **Note:** Frontend must be rebuilt to get this feature on remote machine
 
 ## Deployment Steps on Remote Machine
 
@@ -123,7 +125,9 @@ git pull origin update-ui-gran
 cp -r ~/hirag/api/* ~/hirag/runpod-deployment/source-code/api/
 ```
 
-### 2. Rebuild Frontend
+### 2. Rebuild Frontend (If Frontend Code Changed)
+
+**WHEN TO DO THIS:** Only if you changed frontend code (React components, UI, etc.). Skip if you only changed API/backend code.
 
 **IMPORTANT:** The frontend must be rebuilt with the correct API URL as a build argument, and the source code must be copied to `source-code/` directory first!
 
