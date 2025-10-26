@@ -38,6 +38,9 @@ COPY source-code/api/ ./api/
 COPY source-code/HiRAG/ ./HiRAG/
 COPY source-code/file_parser/ ./file_parser/
 
+# Copy migration script for database schema updates
+COPY source-code/migrate_add_embeddings.py ./migrate_add_embeddings.py
+
 # Copy config file from configs directory (config.yaml is gitignored)
 COPY configs/hirag-config.yaml ./HiRAG/config.yaml
 
@@ -65,5 +68,14 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
 # Expose port
 EXPOSE 8080
 
-# Start the API server
-CMD ["python", "-m", "uvicorn", "api.main:app", "--host", "0.0.0.0", "--port", "8080"]
+# Create startup script that runs migration then starts API
+RUN echo '#!/bin/bash\n\
+set -e\n\
+echo "Running database migration..."\n\
+python migrate_add_embeddings.py\n\
+echo "Starting API server..."\n\
+exec python -m uvicorn api.main:app --host 0.0.0.0 --port 8080\n\
+' > /app/start.sh && chmod +x /app/start.sh
+
+# Start the API server with migration
+CMD ["/app/start.sh"]
