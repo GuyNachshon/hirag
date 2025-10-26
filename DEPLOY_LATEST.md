@@ -10,12 +10,13 @@
    - **Solution**: Multi-layered approach:
      1. **Extract from reasoning_content**: When `content` is empty, extract from `reasoning_content` field
      2. **Use full reasoning as answer**: For GPT-OSS, the reasoning IS the answer - use entire content if no markers found
-     3. **Retry with more tokens**: If still empty, retry with doubled tokens (6000 → 12000 → 20000)
+     3. **Retry with more tokens**: If still empty, retry with doubled tokens (12000 → 24000 → 40000)
      4. **Smart truncation**: Keep up to 3000 chars of the response
      5. **Debug logging**: Added detailed logging to inspect `reasoning_content` during extraction
    - **Key Insight**: The model's "reasoning" contains the actual answer - it's not separate from the response
    - **Model Specs**: GPT-OSS-20b supports 128k context length, so we can be generous with tokens
-   - **Token Strategy**: Start with 6000 tokens (enough for most reasoning chains), max 20000 for complex queries
+   - **Token Strategy**: Start with 12000 tokens (testing showed 8000 works, 12000 is safer), max 40000 for complex queries
+   - **Real-world Results**: 4000 tokens = empty, 8000 tokens = success with 1145 chars
    - **Reference**: https://huggingface.co/openai/gpt-oss-120b/discussions/67
    - This completely fixes the "LLM returned empty content" error
 
@@ -30,7 +31,7 @@
    - Generates structured insights: summary, key points, action items, topics
    - Uses comprehensive Hebrew system prompt
    - Caches results in database
-   - Now uses higher token limits (6000-12000) for better results
+   - Now uses higher token limits (12000-24000) for better results
 
 4. **Improved Chat Responses**
    - Hybrid retry logic ensures responses are never empty
@@ -79,17 +80,36 @@ git pull origin update-ui-gran
 # (The API container mounts ~/hirag/api or source-code/api)
 cp -r ~/hirag/api/* ~/hirag/runpod-deployment/source-code/api/
 
-# Restart API container to pick up changes
-docker restart rag-api
+# Rebuild the API image (--no-cache forces fresh build, avoiding cached layers)
+docker build --no-cache -f dockerfiles/Dockerfile.api -t rag-api:latest .
+
+# Stop and remove old container, then start new one
+docker stop rag-api && docker rm rag-api
+
+docker run -d \
+  --name rag-api \
+  --network rag-network \
+  -p 8080:8080 \
+  -e HIRAG_CONFIG_PATH=/app/configs/hirag-config.yaml \
+  -e LOG_LEVEL=INFO \
+  -e PYTHONPATH=/app \
+  -e CORS_ORIGINS=http://localhost:3000,http://localhost:8087,http://34.72.116.231:8087 \
+  -v $(pwd)/configs:/app/configs \
+  -v $(pwd)/data:/app/data \
+  -v $(pwd)/logs:/app/logs \
+  -v model-cache:/root/.cache/huggingface \
+  --restart unless-stopped \
+  rag-api:latest
 
 # Watch logs to verify new code is running
 docker logs -f rag-api --tail 100
 ```
 
 **What to look for in logs:**
-- Token strategy should show `initial=6000, max=20000` (not 4000, 12000)
+- Token strategy should show `initial=12000, max=40000` (not 4000, 12000)
 - Should see "DEBUG reasoning_content - length: X, first 500 chars: ..."
 - Should see "include_reasoning=false didn't work, using reasoning_content as response"
+- Should NOT need retries anymore (12000 tokens should be enough based on testing)
 
 ### Full Deployment (When Frontend Also Changed)
 
@@ -238,7 +258,8 @@ curl http://localhost:8087/frontend-health
 3. **Token Usage Monitoring**
    - Check API logs for retry attempts and debug messages
    - Debug logs now show actual `reasoning_content` for troubleshooting
-   - Current settings: Chat 6000→20000, Insights 6000→12000
+   - Current settings: Chat 12000→40000, Insights 12000→24000
+   - Testing showed: 4000 tokens = empty, 8000 tokens = success, so 12000 should eliminate retries
    - Logs show: "LLM call attempt N/3 with max_tokens=X"
    - Look for: "DEBUG reasoning_content - length: X" to see extraction process
 

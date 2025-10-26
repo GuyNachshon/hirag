@@ -310,7 +310,19 @@ class RAGService:
         return "\n".join(prompt_parts)
     
     async def _call_vllm(self, prompt: str) -> str:
-        """Call vLLM API for response generation"""
+        """Call vLLM API for response generation"""tzachi@instance-20250115-200616:~/hirag$   docker inspect rag-api | grep -A 10 Mounts
+        "Mounts": [
+            {
+                "Type": "bind",
+                "Source": "/home/tzachi/hirag/runpod-deployment/data",
+                "Destination": "/app/data",
+                "Mode": "",
+                "RW": true,
+                "Propagation": "rprivate"
+            },
+            {
+                "Type": "bind",
+tzachi@instance-20250115-200616:~/hirag$
         try:
             # Extract vLLM configuration
             vllm_config = self.config.get('VLLM', {})
@@ -1348,15 +1360,15 @@ class TranscriptionChatService:
             messages.append({"role": "user", "content": user_message})
 
         # Determine initial and max tokens based on request type
-        # For insights generation, we need more tokens for structured JSON output
-        # GPT-OSS-20b supports 128k context, so we can be generous
+        # GPT-OSS-20b supports 128k context, so we can be VERY generous
+        # Model needs tokens for chain-of-thought reasoning, so start high to avoid retries
         if quick_action_id == "generate_insights":
-            initial_max_tokens = 6000
-            max_total_tokens = 12000
+            initial_max_tokens = 12000
+            max_total_tokens = 24000
         else:
-            # Regular chat - start higher to reduce retries (GPT-OSS needs tokens for reasoning)
-            initial_max_tokens = 6000
-            max_total_tokens = 20000
+            # Regular chat - start with plenty of tokens (8000 worked, so 12000 should be safe)
+            initial_max_tokens = 12000
+            max_total_tokens = 40000
 
         self.logger.main_logger.info(
             f"Token strategy: initial={initial_max_tokens}, max={max_total_tokens}, "
